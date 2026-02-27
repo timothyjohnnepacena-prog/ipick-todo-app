@@ -8,7 +8,7 @@ export const authOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        username: { label: "Username", type: "text" },
+        email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
@@ -16,7 +16,7 @@ export const authOptions = {
         const db = client.db("kanban_db");
 
         const user = await db.collection("users").findOne({ 
-          username: credentials.username 
+          email: credentials.email 
         });
 
         if (user) {
@@ -27,7 +27,7 @@ export const authOptions = {
 
           if (isPasswordCorrect) {
             return { 
-              id: user._id, 
+              id: user._id.toString(), 
               name: user.name, 
               email: user.email, 
               username: user.username 
@@ -40,12 +40,16 @@ export const authOptions = {
   ],
   callbacks: {
     async session({ session, token }) {
-      session.user.username = token.username;
+      if (token) {
+        session.user.username = token.username;
+        session.user.id = token.id;
+      }
       return session;
     },
     async jwt({ token, user }) {
       if (user) {
         token.username = user.username;
+        token.id = user.id;
       }
       return token;
     }

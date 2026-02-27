@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react"; // Import icons
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({ name: "", nickname: "", username: "", email: "", password: "", confirmPassword: "" });
@@ -90,13 +91,13 @@ export default function RegisterPage() {
             <div className="relative w-full">
               <input required type={showPassword ? "text" : "password"} placeholder="Password" className="w-full p-4 pr-12 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors" onChange={(e) => setFormData({...formData, password: e.target.value})} />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#12A55C] transition-colors focus:outline-none">
-                {showPassword ? "Hide" : "Show"}
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
             <div className="relative w-full">
               <input required type={showConfirmPassword ? "text" : "password"} placeholder="Confirm" className="w-full p-4 pr-12 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors" onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})} />
               <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#12A55C] transition-colors focus:outline-none">
-                {showConfirmPassword ? "Hide" : "Show"}
+                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
           </div>

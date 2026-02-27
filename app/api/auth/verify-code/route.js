@@ -12,13 +12,12 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid code" }, { status: 400 });
   }
 
-  // Move details including nickname to real collection
   await db.collection("users").updateOne(
     { email },
     { 
       $set: { 
         name: tempUser.name, 
-        nickname: tempUser.nickname, // Saving nickname
+        nickname: tempUser.nickname, 
         username: tempUser.username, 
         password: tempUser.password,
         registered: true 

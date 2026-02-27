@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react"; 
 
 export default function SignInPage() {
-  const [identifier, setIdentifier] = useState(""); // Changed from email to identifier
+  const [identifier, setIdentifier] = useState(""); 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -20,7 +20,7 @@ export default function SignInPage() {
     setError("");
 
     const res = await signIn("credentials", {
-      identifier, // Send identifier instead of email
+      identifier, 
       password,
       redirect: false,
     });
@@ -52,7 +52,7 @@ export default function SignInPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <input
-              type="text" // Changed from type="email" to "text"
+              type="text" 
               placeholder="Email or Username" 
               className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors"
               value={identifier}

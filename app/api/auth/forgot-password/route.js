@@ -1,5 +1,6 @@
 import clientPromise from "@/lib/mongodb";
 import { NextResponse } from "next/server";
+import nodemailer from "nodemailer"; 
 
 export async function POST(request) {
   try {
@@ -20,18 +21,26 @@ export async function POST(request) {
       { upsert: true }
     );
 
-    const emailRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/email/send-code`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code: resetCode }),
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
     });
 
-    if (!emailRes.ok) {
-      throw new Error("Failed to send email");
-    }
+    const mailOptions = {
+      from: `"iPick Center Board" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Your iPick Center Verification Code",
+      html: `<h1>Your code is ${resetCode}</h1>`, 
+    };
+
+    await transporter.sendMail(mailOptions);
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error("Forgot Password Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

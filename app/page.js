@@ -167,7 +167,6 @@ export default function Home() {
       setTasks(data.tasks || []);
       setLogs(data.logs || []); 
       
-      // NEW: We now build the filter directly from the registered users database!
       if (data.users) {
         setActiveUsers(data.users.map(u => ({
           email: u.email,
@@ -259,8 +258,6 @@ export default function Home() {
 
     return (
       <div className="flex flex-col md:flex-row h-screen bg-[#F1F3F6] overflow-hidden text-slate-800">
-        
-        {/* MOBILE TOP NAVIGATION BAR */}
         <div className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-40 shrink-0">
           <img src="/ipick-logo-navbar.png" alt="iPick Center" className="h-8 object-contain" />
           <div className="flex items-center gap-4">
@@ -272,7 +269,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SIDEBAR */}
         {isMobileMenuOpen && (
           <div className="fixed inset-0 bg-slate-800/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
         )}
@@ -310,10 +306,7 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* MAIN CONTENT AREA */}
         <main className="flex-1 flex flex-col h-full overflow-hidden p-3 md:p-6 relative">
-          
-          {/* THE BOARD PANEL */}
           {activeTab === "board" && (
             <div className="relative bg-white rounded-3xl p-4 md:p-8 border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col min-h-0">
               <div className="absolute inset-0 bg-[url('/ipick-logo-navbar.png')] bg-center bg-no-repeat bg-[length:70%] md:bg-[length:35%] opacity-[0.12] mix-blend-multiply pointer-events-none z-0"></div>
@@ -343,10 +336,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* THE LOGS PANEL */}
           {activeTab === "logs" && (
             <div className="relative bg-white rounded-3xl p-4 md:p-8 border border-slate-200 shadow-sm overflow-auto flex-1 flex flex-col h-full">
-               
                <div className="border-b border-slate-100 pb-4 mb-6 flex justify-between items-start md:items-center gap-4">
                  <div>
                    <h2 className="text-xl md:text-2xl font-black text-[#12A55C] tracking-tight">Activity Logs</h2>
@@ -373,7 +364,7 @@ export default function Home() {
                      return (
                        <div key={log._id} className="flex items-start gap-3 md:gap-4 p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-sm transition-all">
                          <div className={`mt-1 h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${isDelete ? 'bg-[#9E2A2B]/10 text-[#9E2A2B]' : isAdd ? 'bg-[#12A55C]/10 text-[#12A55C]' : isEdit ? 'bg-blue-100 text-blue-500' : 'bg-[#F37A22]/10 text-[#F37A22]'}`}>
-                            {isDelete ? "🗑️" : isAdd ? "✨" : isEdit ? "✏️" : "🔄"}
+                            {isDelete ? "X" : isAdd ? "+" : isEdit ? "E" : "R"}
                          </div>
                          <div>
                            <p className="text-xs md:text-sm text-slate-700">
@@ -391,7 +382,6 @@ export default function Home() {
                )}
             </div>
           )}
-
         </main>
       </div>
     );

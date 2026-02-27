@@ -12,10 +12,9 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const usersFilter = searchParams.get("users")?.split(",").filter(Boolean) || [];
 
-  // NEW: Fetch ALL registered users from the database
   const allUsers = await db.collection("users").find({}).project({ email: 1, nickname: 1, name: 1 }).toArray();
-
   const lists = await db.collection("lists").find({}).toArray();
+  
   const pipeline = [
     { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
     { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, "$userEmail"] } } },
@@ -32,7 +31,6 @@ export async function GET(request) {
     { $limit: 100 }
   ]).toArray();
 
-  // Return the users list along with tasks, lists, and logs
   return NextResponse.json({ tasks, lists, logs, users: allUsers });
 }
 

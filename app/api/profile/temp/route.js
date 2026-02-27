@@ -8,11 +8,9 @@ export async function POST(request) {
     const client = await clientPromise;
     const db = client.db("kanban_db");
 
-    // Hash the password with 10 salt rounds
     if (data.password) {
       const salt = await bcrypt.genSalt(10);
       data.password = await bcrypt.hash(data.password, salt);
-      // Delete confirmPassword so it isn't saved in the DB
       delete data.confirmPassword;
     }
 

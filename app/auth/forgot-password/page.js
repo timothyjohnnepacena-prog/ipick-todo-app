@@ -92,7 +92,7 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleResetPassword} className="space-y-4">
             
-            {/* THE TRAP: Hidden email field to catch the browser's autofill */}
+            
             <input 
               type="email" 
               name="email" 

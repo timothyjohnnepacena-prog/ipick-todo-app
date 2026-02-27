@@ -16,7 +16,7 @@ export default function SignInPage() {
     if (res.ok) {
       router.push("/");
     } else {
-      setError("❌ Invalid username or password");
+      setError("Invalid username or password");
     }
   };
 
@@ -40,7 +40,6 @@ export default function SignInPage() {
             onChange={(e) => setUsername(e.target.value)} 
           />
           
-          {/* PASSWORD FIELD & FORGOT PASSWORD LINK GROUPED */}
           <div className="text-right">
             <input 
               type="password" 

@@ -20,7 +20,6 @@ export const authOptions = {
         });
 
         if (user) {
-          // Compare the typed password with the hashed password in DB
           const isPasswordCorrect = await bcrypt.compare(
             credentials.password, 
             user.password

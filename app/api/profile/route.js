@@ -11,7 +11,6 @@ export async function POST(request) {
   const client = await clientPromise;
   const db = client.db("kanban_db");
 
-  // We update the existing user document created by NextAuth
   await db.collection("users").updateOne(
     { email: session.user.email },
     { 

@@ -8,15 +8,18 @@ export const authOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "text" },
+        identifier: { label: "Email or Username", type: "text" }, 
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
         const client = await clientPromise;
         const db = client.db("kanban_db");
 
-        const user = await db.collection("users").findOne({ 
-          email: credentials.email 
+        const user = await db.collection("users").findOne({
+          $or: [
+            { email: credentials.identifier },
+            { username: credentials.identifier }
+          ]
         });
 
         if (user) {

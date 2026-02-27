@@ -35,12 +35,22 @@ export default function ForgotPasswordPage() {
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
+    setError("");
+
+    const hasUpperCase = /[A-Z]/.test(newPassword);
+    const hasLowerCase = /[a-z]/.test(newPassword);
+    const hasNumbers = /[0-9]/.test(newPassword);
+    const isLongEnough = newPassword.length >= 8;
+
+    if (!isLongEnough || !hasUpperCase || !hasLowerCase || !hasNumbers) {
+      return setError("Password must be at least 8 characters long and include an uppercase letter, a lowercase letter, and a number.");
+    }
+    
     if (newPassword !== confirmPassword) {
-      return setError("Passwords do not match");
+      return setError("Passwords do not match!");
     }
     
     setLoading(true);
-    setError("");
 
     const res = await fetch("/api/auth/reset-password", {
       method: "POST",
@@ -72,7 +82,8 @@ export default function ForgotPasswordPage() {
           {step === 1 ? "Enter your email to receive a reset code." : "Enter the 6-digit code and your new password."}
         </p>
         
-        {error && <p className="text-[#9E2A2B] text-xs font-bold mb-4 bg-[#9E2A2B]/10 py-2 rounded-xl">{error}</p>}
+        {/* Error message display */}
+        {error && <p className="text-[#9E2A2B] text-xs font-bold mb-4 bg-[#9E2A2B]/10 py-3 px-4 rounded-xl border border-[#9E2A2B]/20 leading-relaxed">{error}</p>}
 
         {step === 1 ? (
           <form onSubmit={handleRequestCode} className="space-y-4">
@@ -91,7 +102,6 @@ export default function ForgotPasswordPage() {
           </form>
         ) : (
           <form onSubmit={handleResetPassword} className="space-y-4">
-            
             
             <input 
               type="email" 

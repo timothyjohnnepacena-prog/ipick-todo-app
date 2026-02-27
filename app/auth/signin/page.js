@@ -1,3 +1,4 @@
+// app/auth/signin/page.js
 "use client";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
@@ -6,9 +7,9 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react"; 
 
 export default function SignInPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Changed from email to identifier
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // Toggle state
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -19,13 +20,13 @@ export default function SignInPage() {
     setError("");
 
     const res = await signIn("credentials", {
-      email,
+      identifier, // Send identifier instead of email
       password,
       redirect: false,
     });
 
     if (res?.error) {
-      setError("Invalid email or password");
+      setError("Invalid login credentials");
       setLoading(false);
     } else {
       router.push("/");
@@ -51,11 +52,11 @@ export default function SignInPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <input
-              type="email"
-              placeholder="Email Address"
+              type="text" // Changed from type="email" to "text"
+              placeholder="Email or Username" 
               className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
             />
           </div>

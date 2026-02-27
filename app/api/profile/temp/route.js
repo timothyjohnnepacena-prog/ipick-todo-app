@@ -8,7 +8,6 @@ export async function POST(request) {
     const client = await clientPromise;
     const db = client.db("kanban_db");
 
-    // 1. Check if the user is already fully registered in the 'users' collection
     if (!data.resendOnly) {
       const existingUser = await db.collection("users").findOne({
         $or: [
@@ -27,14 +26,12 @@ export async function POST(request) {
       }
     }
 
-    // 2. Hash the password if this is a new registration (not just a code resend)
     if (data.password) {
       const salt = await bcrypt.genSalt(10);
       data.password = await bcrypt.hash(data.password, salt);
       delete data.confirmPassword;
     }
 
-    // 3. Handle the temporary registration data
     if (data.resendOnly) {
       await db.collection("temp_registrations").updateOne(
         { email: data.email },

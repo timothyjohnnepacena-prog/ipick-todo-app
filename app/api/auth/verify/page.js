@@ -34,7 +34,6 @@ export default function VerifyCodePage() {
         </button>
 
         <p className="mt-8 text-xs text-slate-400 font-medium">
-          {/* FIXED: Using &apos; instead of a plain apostrophe to fix your ESLint error */}
           Didn&apos;t receive it? <button onClick={() => window.location.href='/api/auth/signin'} className="text-blue-500 hover:underline">Try again</button>
         </p>
       </div>

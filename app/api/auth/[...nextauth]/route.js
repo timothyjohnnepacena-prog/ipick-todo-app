@@ -13,7 +13,10 @@ export const authOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.identifier || !credentials?.password) return null;
+        // SECURITY FIX: Prevent NoSQL Injection by ensuring identifier is a string
+        if (!credentials?.identifier || typeof credentials.identifier !== "string") {
+          return null;
+        }
 
         const client = await clientPromise;
         const db = client.db("kanban_db");
@@ -44,10 +47,6 @@ export const authOptions = {
       }
     })
   ],
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
   callbacks: {
     async session({ session, token }) {
       if (token && session.user) {
@@ -63,6 +62,9 @@ export const authOptions = {
       }
       return token;
     }
+  },
+  session: {
+    strategy: "jwt",
   },
   pages: {
     signIn: '/auth/signin',

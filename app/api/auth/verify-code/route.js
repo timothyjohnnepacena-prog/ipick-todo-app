@@ -4,26 +4,21 @@ import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limiting";
 
 export async function POST(request) {
-  // SECURITY FIX: Apply rate limiting to prevent code brute-forcing
   const ip = request.headers.get("x-forwarded-for") || "anonymous";
   if (!rateLimit(ip)) {
-    return NextResponse.json(
-      { error: "Too many attempts. Please try again later." }, 
-      { status: 429 }
-    );
+    return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   }
 
   const { email, code } = await request.json();
   const client = await clientPromise;
   const db = client.db("kanban_db");
 
-  const tempUser = await db.collection("temp_registrations").findOne({ email });
+  const tempUser = await db.collection("temp_registrations").findOne({ email, verificationCode: code });
 
-  if (!tempUser || tempUser.verificationCode !== code) {
+  if (!tempUser) {
     return NextResponse.json({ error: "Invalid code" }, { status: 400 });
   }
 
-  // SECURITY FIX: Explicitly set fields to avoid accidental data overwrites
   await db.collection("users").updateOne(
     { email },
     { 

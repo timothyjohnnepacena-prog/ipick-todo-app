@@ -13,9 +13,9 @@ export default withAuth(
   }
 );
 
-// Protect all dashboard pages and API routes EXCEPT auth and static assets
+// Protect all routes EXCEPT specific authentication and static asset paths
 export const config = { 
   matcher: [
-    "/((?!api/auth|auth|register|_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!api/auth|auth|register|_next/static|_next/image|favicon.ico|public/).*)",
   ] 
 };

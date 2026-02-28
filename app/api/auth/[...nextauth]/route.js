@@ -1,12 +1,9 @@
-// app/api/auth/[...nextauth]/route.js
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import clientPromise from "@/lib/mongodb";
-import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import bcrypt from "bcrypt";
 
 export const authOptions = {
-  adapter: MongoDBAdapter(clientPromise),
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -15,13 +12,9 @@ export const authOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // SECURITY: Ensure identifier is a string to prevent NoSQL injection
-        if (!credentials?.identifier || typeof credentials.identifier !== "string") return null;
-
         const client = await clientPromise;
         const db = client.db("kanban_db");
 
-        // Search by email OR username
         const user = await db.collection("users").findOne({
           $or: [
             { email: credentials.identifier },
@@ -29,8 +22,12 @@ export const authOptions = {
           ]
         });
 
-        if (user && user.password) {
-          const isPasswordCorrect = await bcrypt.compare(credentials.password, user.password);
+        if (user) {
+          const isPasswordCorrect = await bcrypt.compare(
+            credentials.password, 
+            user.password
+          );
+
           if (isPasswordCorrect) {
             return { 
               id: user._id.toString(), 
@@ -44,31 +41,26 @@ export const authOptions = {
       }
     })
   ],
-  session: {
-    // FIX: Must use 'jwt' for CredentialsProvider to prevent login hang
-    strategy: "jwt", 
-    maxAge: 30 * 24 * 60 * 60, 
-  },
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.username = user.username;
-      }
-      return token;
-    },
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id;
         session.user.username = token.username;
+        session.user.id = token.id;
       }
       return session;
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.username = user.username;
+        token.id = user.id;
+      }
+      return token;
     }
   },
-  secret: process.env.NEXTAUTH_SECRET,
-  pages: { 
-    signIn: '/auth/signin' 
+  pages: {
+    signIn: '/auth/signin',
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 const handler = NextAuth(authOptions);

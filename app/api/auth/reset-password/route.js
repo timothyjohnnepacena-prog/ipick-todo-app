@@ -1,36 +1,43 @@
-// app/api/auth/reset-password/route.js
 import clientPromise from "@/lib/mongodb";
 import { NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 
 export async function POST(request) {
-  const { token, newPassword } = await request.json();
-  
-  if (!token || !newPassword || newPassword.length < 8) {
-    return NextResponse.json({ error: "Invalid input. Password must be 8+ chars." }, { status: 400 });
+  try {
+    const { email, code, newPassword } = await request.json();
+    const client = await clientPromise;
+    const db = client.db("kanban_db");
+
+    const resetEntry = await db.collection("password_resets").findOne({ 
+      email, 
+      code 
+    });
+
+    if (!resetEntry) {
+      return NextResponse.json({ error: "Invalid or expired reset code" }, { status: 400 });
+    }
+
+    const now = new Date();
+    const codeAge = (now - new Date(resetEntry.createdAt)) / 1000 / 60;
+    if (codeAge > 60) {
+      return NextResponse.json({ error: "Reset code has expired" }, { status: 400 });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const updateResult = await db.collection("users").updateOne(
+      { email },
+      { $set: { password: hashedPassword } }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return NextResponse.json({ error: "Failed to update password" }, { status: 500 });
+    }
+
+    await db.collection("password_resets").deleteOne({ email });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-
-  const client = await clientPromise;
-  const db = client.db("kanban_db");
-
-  // 1. Find the token
-  const resetRequest = await db.collection("password_resets").findOne({ token });
-
-  if (!resetRequest) {
-    return NextResponse.json({ error: "Invalid or expired token." }, { status: 400 });
-  }
-
-  // 2. Hash new password (12 rounds for high security)
-  const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-  // 3. Update the user
-  await db.collection("users").updateOne(
-    { email: resetRequest.email },
-    { $set: { password: hashedPassword } }
-  );
-
-  // 4. SECURITY FIX: Delete token immediately after use so it can't be reused
-  await db.collection("password_resets").deleteOne({ token });
-
-  return NextResponse.json({ success: true, message: "Password updated successfully." });
 }

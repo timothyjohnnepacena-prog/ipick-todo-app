@@ -1,42 +1,48 @@
-// app/api/email/send-code/route.js
-import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
-import { rateLimit } from "@/lib/rate-limiting";
+import nodemailer from "nodemailer";
 
 export async function POST(request) {
   try {
-    // 1. Enforce Rate Limiting
-    const ip = request.headers.get("x-forwarded-for") || "anonymous";
-    if (!rateLimit(ip)) {
-      return NextResponse.json(
-        { error: "Too many attempts. Please try again later." }, 
-        { status: 429 }
-      );
-    }
+    const { email, code } = await request.json();
 
-    const { email, verificationCode } = await request.json();
-
-    // 2. Configure NodeMailer
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS, // MUST be a 16-character App Password
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
-    // 3. Send Email
-    await transporter.sendMail({
-      from: `"iPick Support" <${process.env.GMAIL_USER}>`,
-      to: email,
-      subject: "Your iPick Verification Code",
-      text: `Your verification code is: ${verificationCode}`,
-      html: `<b>Your verification code is: ${verificationCode}</b>`,
-    });
+    const htmlTemplate = `
+      <div style="font-family: Arial, sans-serif; background-color: #F1F3F6; padding: 40px 20px; text-align: center; color: #334155;">
+        <div style="max-w-md mx-auto; background-color: #ffffff; padding: 40px; border-radius: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 500px; margin: 0 auto; border-top: 6px solid #12A55C;">
+          <h1 style="color: #12A55C; font-size: 28px; margin-bottom: 8px; font-weight: 900; letter-spacing: -0.5px;">iPick Center</h1>
+          <p style="color: #94A3B8; font-size: 14px; margin-top: 0; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Account Security</p>
+          <h2 style="color: #1E293B; font-size: 20px; margin-bottom: 16px;">Your Verification Code</h2>
+          <p style="color: #64748B; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
+            You recently requested to verify your account or reset your password. Please use the 6-digit security code below to complete the process.
+          </p>
+          <div style="background-color: #F8FAFC; border: 2px dashed #E2E8F0; padding: 20px; border-radius: 16px; margin-bottom: 30px;">
+            <span style="font-size: 32px; font-weight: 900; color: #F37A22; letter-spacing: 8px; font-family: monospace;">${code}</span>
+          </div>
+          <p style="color: #94A3B8; font-size: 12px; line-height: 1.5;">
+            If you did not request this code, please ignore this email or contact your system administrator. This code will expire shortly.
+          </p>
+        </div>
+      </div>
+    `;
 
+    const mailOptions = {
+      from: `"iPick Center Board" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Your iPick Center Verification Code",
+      html: htmlTemplate,
+    };
+
+    await transporter.sendMail(mailOptions);
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Email Error:", error);
+  } catch (err) {
+    console.error("Email error:", err);
     return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
   }
 }

@@ -1,14 +1,15 @@
 // app/auth/signin/page.js
 "use client";
-
-import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react"; 
 
-export default function SignIn() {
-  const [identifier, setIdentifier] = useState("");
+export default function SignInPage() {
+  const [identifier, setIdentifier] = useState(""); 
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -18,65 +19,83 @@ export default function SignIn() {
     setLoading(true);
     setError("");
 
-    // The redirect: false is what allows us to catch errors without refreshing
     const res = await signIn("credentials", {
-      redirect: false,
-      identifier,
+      identifier, 
       password,
+      redirect: false,
     });
 
     if (res?.error) {
-      // THIS stops the page from getting "stuck" by showing you the error.
-      setError("Invalid username/email or password. If this is an old account, you may need to create a new one.");
+      setError("Invalid login credentials");
       setLoading(false);
-    } else if (res?.ok) {
-      router.push("/"); // Redirect to dashboard on success
+    } else {
+      router.push("/");
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg">
-        <h2 className="text-3xl font-bold text-center text-gray-800">Sign In</h2>
-        
-        {/* Error Message Display */}
+    <div className="min-h-screen flex items-center justify-center bg-[#F1F3F6] p-4 text-slate-800">
+      <div className="bg-white p-10 md:p-12 rounded-[3rem] shadow-2xl w-full max-w-md border border-white">
+        <div className="flex justify-center mb-6">
+          <img src="/ipick-logo-navbar.png" alt="iPick Center" className="h-20 object-contain" />
+        </div>
+
+        <h1 className="text-3xl font-black mb-2 text-[#12A55C] uppercase text-center tracking-tighter">Welcome Back</h1>
+        <p className="text-slate-400 mb-8 text-center text-sm font-medium">Log in to manage your team tasks</p>
+
         {error && (
-          <div className="p-3 text-sm text-red-700 bg-red-100 rounded-md text-center border border-red-200">
+          <div className="mb-6 bg-[#9E2A2B]/10 text-[#9E2A2B] text-xs font-bold py-3 px-4 rounded-xl text-center border border-[#9E2A2B]/20">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email or Username</label>
             <input
-              type="text"
+              type="text" 
+              placeholder="Email or Username" 
+              className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <div className="relative">
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              className="w-full p-4 pr-12 bg-slate-50 rounded-2xl outline-none focus:border-[#12A55C] border-2 border-transparent transition-colors"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#12A55C] transition-colors"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
+
+          <div className="flex justify-end text-xs">
+            <Link href="/auth/forgot-password" weight="bold" className="text-[#F37A22] font-bold hover:underline">
+              Forgot Password?
+            </Link>
+          </div>
+
           <button
-            type="submit"
             disabled={loading}
-            className="w-full py-2.5 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            type="submit"
+            className="w-full bg-[#12A55C] text-white font-black py-5 rounded-[2rem] hover:bg-[#0e8549] transition-all uppercase tracking-widest text-sm shadow-xl shadow-[#12A55C]/20 disabled:bg-slate-300"
           >
-            {loading ? "Signing In..." : "Sign In"}
+            {loading ? "Signing In..." : "Log In"}
           </button>
         </form>
-        <div className="text-center text-sm text-gray-600 mt-4">
-          <p>Don't have an account? <Link href="/register" className="text-blue-600 hover:underline font-semibold">Register here</Link></p>
+
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center text-sm text-slate-400">
+          Don't have an account? 
+          <Link href="/register" className="text-[#F37A22] font-bold hover:underline ml-1">Sign Up</Link>
         </div>
       </div>
     </div>

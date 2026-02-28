@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { taskSchema, listSchema } from "@/lib/validation";
 
+// Helper for security logging
 async function logActivity(db, action, details, userEmail) {
   await db.collection("activity_logs").insertOne({ 
     action, 
@@ -23,21 +24,12 @@ export async function GET(request) {
   const db = client.db("kanban_db");
   const userEmail = session.user.email;
 
-  // 1. Fetch only the current user's lists [SECURITY: Isolation]
-  const lists = await db.collection("lists").find({ createdBy: userEmail }).toArray();
-  
-  // 2. Fetch only the current user's tasks
-  const tasks = await db.collection("tasks")
-    .find({ userEmail })
-    .sort({ order: 1 })
-    .toArray();
-
-  // 3. Fetch only the current user's logs
-  const logs = await db.collection("activity_logs")
-    .find({ userEmail })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .toArray();
+  // Fetch only user-owned data
+  const [lists, tasks, logs] = await Promise.all([
+    db.collection("lists").find({ createdBy: userEmail }).toArray(),
+    db.collection("tasks").find({ userEmail }).sort({ order: 1 }).toArray(),
+    db.collection("activity_logs").find({ userEmail }).sort({ createdAt: -1 }).limit(50).toArray()
+  ]);
 
   return NextResponse.json({ tasks, lists, logs });
 }
@@ -55,13 +47,17 @@ export async function POST(request) {
     listSchema.parse(data);
     const result = await db.collection("lists").insertOne({ 
       name: data.name, 
-      createdBy: userEmail // Ensure ownership is set
+      createdBy: userEmail 
     });
     await logActivity(db, "ADD_LIST", `Created list: "${data.name}"`, userEmail);
     return NextResponse.json(result);
   }
   
   taskSchema.parse(data);
+  // Verify list ownership before adding a task to it
+  const list = await db.collection("lists").findOne({ _id: new ObjectId(data.listId), createdBy: userEmail });
+  if (!list) return NextResponse.json({ error: "Invalid List" }, { status: 403 });
+
   const result = await db.collection("tasks").insertOne({ 
     text: data.text, 
     listId: data.listId, 
@@ -83,42 +79,28 @@ export async function PATCH(request) {
   const userEmail = session.user.email;
 
   if (body.type === "list") {
-    // SECURITY: Verify list ownership before editing
+    // Verify ownership before renaming
     const result = await db.collection("lists").updateOne(
       { _id: new ObjectId(body.listId), createdBy: userEmail },
       { $set: { name: body.newName } }
     );
     if (result.matchedCount === 0) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    
-    await logActivity(db, "EDIT_LIST", `Renamed list to "${body.newName}"`, userEmail);
     return NextResponse.json({ success: true });
   }
 
   if (body.bulk) {
-    // SECURITY: Prevent IDOR by verifying all target lists belong to the user
-    const targetListIds = [...new Set(body.tasks.map(t => t.listId))];
-    const userLists = await db.collection("lists")
-      .find({ 
-        _id: { $in: targetListIds.map(id => new ObjectId(id)) }, 
-        createdBy: userEmail 
-      })
-      .toArray();
-
-    if (userLists.length !== targetListIds.length) {
-      return NextResponse.json({ error: "Unauthorized list access" }, { status: 403 });
-    }
-
+    // Verify all tasks being moved belong to the user
     const bulkOps = body.tasks.map((task, index) => ({
       updateOne: { 
         filter: { _id: new ObjectId(task._id), userEmail }, 
         update: { $set: { listId: task.listId, order: index } } 
       }
     }));
-    await db.collection("tasks").bulkWrite(bulkOps);
-    return NextResponse.json({ success: true });
+    const result = await db.collection("tasks").bulkWrite(bulkOps);
+    return NextResponse.json({ success: true, modified: result.modifiedCount });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ error: "Invalid Request" }, { status: 400 });
 }
 
 export async function DELETE(request) {
@@ -131,14 +113,21 @@ export async function DELETE(request) {
   const userEmail = session.user.email;
 
   if (body.taskId) {
+    // Ensure userEmail matches the task owner
     const result = await db.collection("tasks").deleteOne({ 
       _id: new ObjectId(body.taskId), 
       userEmail 
     });
     if (result.deletedCount === 0) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    await logActivity(db, "DELETE_TASK", `Deleted a task`, userEmail);
+    return NextResponse.json({ success: true });
+  }
+  
+  if (body.listId) {
+    // Delete list AND its tasks only if owner matches
+    await db.collection("tasks").deleteMany({ listId: body.listId, userEmail });
+    await db.collection("lists").deleteOne({ _id: new ObjectId(body.listId), createdBy: userEmail });
     return NextResponse.json({ success: true });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ error: "Invalid Request" }, { status: 400 });
 }

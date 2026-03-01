@@ -20,7 +20,7 @@ function TaskCard({ task, fetchData, isOverlay, isDragging, session }) {
           await fetch("/api/todos", { 
             method: "PATCH", 
             headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ type: "edit_task", taskId: task._id, newText, userEmail: session?.user?.email }) 
+            body: JSON.stringify({ type: "edit_task", taskId: task._id, newText }) 
           });
           if(fetchData) fetchData();
         }
@@ -38,7 +38,7 @@ function TaskCard({ task, fetchData, isOverlay, isDragging, session }) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={async () => { 
             if (confirm("Delete?")) { 
-              await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task._id, userEmail: session?.user?.email }) }); 
+              await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task._id }) }); 
               if(fetchData) fetchData(); 
             } 
           }}
@@ -71,7 +71,7 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
   const handleAddTask = async () => {
     const text = prompt("New Task:");
     if (text) {
-      await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", data: { text, listId: list._id }, userEmail: session?.user?.email }) });
+      await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", data: { text, listId: list._id } }) });
       fetchData();
     }
   };
@@ -80,7 +80,7 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
     setMenuOpen(false);
     const newName = prompt("Rename list:", list.name);
     if (newName && newName !== list.name) {
-      await fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id, newName, userEmail: session?.user?.email }) });
+      await fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id, newName }) });
       fetchData();
     }
   };
@@ -88,7 +88,7 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
   const handleDeleteList = async () => {
     setMenuOpen(false);
     if (confirm(`Delete the "${list.name}" list and ALL tasks inside it?`)) {
-      await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id, userEmail: session?.user?.email }) });
+      await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id }) });
       fetchData();
     }
   };
@@ -168,9 +168,10 @@ export default function Home() {
       setLogs(data.logs || []); 
       
       if (data.users) {
+        // SECURITY UPGRADE: Map to ID instead of Email for filter buttons
         setActiveUsers(data.users.map(u => ({
-          email: u.email,
-          name: u.nickname || u.name || u.email.split('@')[0]
+          id: u._id,
+          name: u.nickname || u.name || "User"
         })));
       }
     } finally { setFetching(false); }
@@ -178,7 +179,7 @@ export default function Home() {
 
   const handleClearLogs = async () => {
     if (confirm("Permanently delete all activity logs?")) {
-      await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs", userEmail: session?.user?.email }) });
+      await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs" }) });
       fetchData();
     }
   };
@@ -243,7 +244,7 @@ export default function Home() {
     await fetch("/api/todos", { 
       method: "PATCH", 
       headers: { "Content-Type": "application/json" }, 
-      body: JSON.stringify({ bulk: true, tasks: tasksInList, logMessage, userEmail: session?.user?.email }) 
+      body: JSON.stringify({ bulk: true, tasks: tasksInList, logMessage }) 
     });
     
     fetchData(); 
@@ -315,7 +316,11 @@ export default function Home() {
                 <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 px-1">Filter Board:</span>
                 <button onClick={() => setSelectedUsers([])} className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.length === 0 ? 'bg-[#12A55C] text-white border-[#12A55C]' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'}`}>ALL</button>
                 {activeUsers.map(user => (
-                  <button key={user.email} onClick={() => setSelectedUsers(prev => prev.includes(user.email) ? prev.filter(e => e !== user.email) : [...prev, user.email])} className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.includes(user.email) ? 'bg-[#F37A22] text-white border-[#F37A22] shadow-md shadow-[#F37A22]/20' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:border-[#F37A22]/40'}`}>
+                  <button 
+                    key={user.id} 
+                    onClick={() => setSelectedUsers(prev => prev.includes(user.id) ? prev.filter(e => e !== user.id) : [...prev, user.id])} 
+                    className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.includes(user.id) ? 'bg-[#F37A22] text-white border-[#F37A22] shadow-md shadow-[#F37A22]/20' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:border-[#F37A22]/40'}`}
+                  >
                     {user.name.toUpperCase()}
                   </button>
                 ))}
@@ -325,7 +330,7 @@ export default function Home() {
                 <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto overflow-y-hidden pb-4 flex-1 h-full">
                   {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} session={session} />)}
                   
-                  <button onClick={async () => { const name = prompt("List Name:"); if (name) { await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name }, userEmail: session?.user?.email }) }); fetchData(); } }} className="min-w-[280px] border-2 border-dashed border-slate-300 rounded-2xl p-6 text-slate-400 font-bold hover:bg-slate-50 hover:border-[#F37A22] hover:text-[#F37A22] transition-all text-xs uppercase tracking-widest relative z-10 bg-white/60 backdrop-blur-sm shrink-0">
+                  <button onClick={async () => { const name = prompt("List Name:"); if (name) { await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name } }) }); fetchData(); } }} className="min-w-[280px] border-2 border-dashed border-slate-300 rounded-2xl p-6 text-slate-400 font-bold hover:bg-slate-50 hover:border-[#F37A22] hover:text-[#F37A22] transition-all text-xs uppercase tracking-widest relative z-10 bg-white/60 backdrop-blur-sm shrink-0">
                     + New Column
                   </button>
                 </div>

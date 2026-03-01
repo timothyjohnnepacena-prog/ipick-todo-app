@@ -34,12 +34,11 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     const res = await fetch("/api/profile/temp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...formData, verificationCode: code }),
+      body: JSON.stringify(formData), 
     });
 
     if (!res.ok) {
@@ -51,7 +50,7 @@ export default function RegisterPage() {
     const emailRes = await fetch("/api/email/send-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: formData.email, code }),
+      body: JSON.stringify({ email: formData.email }), 
     });
 
     if (emailRes.ok) {

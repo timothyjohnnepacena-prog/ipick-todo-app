@@ -1,9 +1,25 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import clientPromise from "@/lib/mongodb";
 
 export async function POST(request) {
   try {
-    const { email, code } = await request.json();
+    const { email } = await request.json();
+
+    const client = await clientPromise;
+    const db = client.db("kanban_db");
+    
+    let userRecord = await db.collection("temp_registrations").findOne({ email });
+    let secureCode = userRecord?.verificationCode;
+
+    if (!secureCode) {
+        const mainUser = await db.collection("users").findOne({ email });
+        secureCode = mainUser?.resetCode || mainUser?.verificationCode;
+    }
+
+    if (!secureCode) {
+        return NextResponse.json({ error: "No code generated for this email." }, { status: 404 });
+    }
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -16,14 +32,14 @@ export async function POST(request) {
     const htmlTemplate = `
       <div style="font-family: Arial, sans-serif; background-color: #F1F3F6; padding: 40px 20px; text-align: center; color: #334155;">
         <div style="max-w-md mx-auto; background-color: #ffffff; padding: 40px; border-radius: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 500px; margin: 0 auto; border-top: 6px solid #12A55C;">
-          <h1 style="color: #12A55C; font-size: 28px; margin-bottom: 8px; font-weight: 900; letter-spacing: -0.5px;">iPick Center</h1>
+          <h1 style="color: #12A55C; font-size: 28px; margin-bottom: 8px; font-weight: 900; letter-spacing: -0.5px;">iPick To Do App</h1>
           <p style="color: #94A3B8; font-size: 14px; margin-top: 0; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Account Security</p>
           <h2 style="color: #1E293B; font-size: 20px; margin-bottom: 16px;">Your Verification Code</h2>
           <p style="color: #64748B; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
             You recently requested to verify your account or reset your password. Please use the 6-digit security code below to complete the process.
           </p>
           <div style="background-color: #F8FAFC; border: 2px dashed #E2E8F0; padding: 20px; border-radius: 16px; margin-bottom: 30px;">
-            <span style="font-size: 32px; font-weight: 900; color: #F37A22; letter-spacing: 8px; font-family: monospace;">${code}</span>
+            <span style="font-size: 32px; font-weight: 900; color: #F37A22; letter-spacing: 8px; font-family: monospace;">${secureCode}</span>
           </div>
           <p style="color: #94A3B8; font-size: 12px; line-height: 1.5;">
             If you did not request this code, please ignore this email or contact your system administrator. This code will expire shortly.
@@ -33,9 +49,9 @@ export async function POST(request) {
     `;
 
     const mailOptions = {
-      from: `"iPick Center Board" <${process.env.EMAIL_USER}>`,
+      from: `"iPick To Do App" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Your iPick Center Verification Code",
+      subject: "Your iPick To Do App Verification Code",
       html: htmlTemplate,
     };
 

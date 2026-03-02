@@ -237,8 +237,14 @@ export default function Home() {
     const fetchData = useCallback(async (silent = false) => {
         if (!silent) setFetching(true);
         try {
-            const userQuery = selectedUsers.length ? `?users=${selectedUsers.join(",")}` : "";
-            const res = await fetch(`/api/todos${userQuery}`);
+            const userQuery = selectedUsers.length ? `users=${selectedUsers.join(",")}&` : "";
+            const res = await fetch(`/api/todos?${userQuery}t=${Date.now()}`, {
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache"
+                }
+            });
             // Only update state if the response is successful
             if (!res.ok) return;
             const data = await res.json();
@@ -311,7 +317,11 @@ export default function Home() {
     const onDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
         setActiveTask(null);
-        if (!over) return;
+        if (!over) {
+            // Task dropped outside valid areas, revert to actual server state
+            fetchData(true);
+            return;
+        }
 
         const activeId = String(active.id);
         const overId = String(over.id);
@@ -339,7 +349,10 @@ export default function Home() {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ bulk: true, tasks: updatedTasks, logMessage })
-        }).then(() => fetchData(true)).catch(() => fetchData(true));
+        }).then(res => {
+            // Only refresh the board if something went wrong, preventing race conditions
+            if (!res.ok) fetchData(true);
+        }).catch(() => fetchData(true));
     };
 
     if (status === "loading") {

@@ -73,8 +73,6 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }) {
-      // 🛡️ SECURITY UPGRADE: Minimized session exposure. 
-      // ID and Username are intentionally omitted.
       if (token) {
         session.user = {
           name: token.name,

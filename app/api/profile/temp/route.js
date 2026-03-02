@@ -19,6 +19,7 @@ export async function POST(request) {
   try {
     const headersList = await headers();
     const ip = headersList.get("x-forwarded-for") || "127.0.0.1";
+    
     const { success } = await ratelimit.limit(`register_${ip}`);
     if (!success) {
       return NextResponse.json({ error: "Too many requests. Please try again in a minute." }, { status: 429 });
@@ -54,6 +55,11 @@ export async function POST(request) {
     }
 
     if (data.resendOnly) {
+      const { success: emailRateLimitSuccess } = await ratelimit.limit(`resend_${data.email}`);
+      if (!emailRateLimitSuccess) {
+        return NextResponse.json({ error: "Too many resend attempts for this email. Please try again later." }, { status: 429 });
+      }
+
       await db.collection("temp_registrations").updateOne(
         { email: data.email },
         { $set: { verificationCode: serverGeneratedCode } }
@@ -68,6 +74,7 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error("Registration Error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

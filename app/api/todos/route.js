@@ -5,28 +5,36 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import crypto from "crypto";
 
-// 🛡️ SECURITY UPGRADE: ID Encryption System
-const ENCRYPTION_KEY = crypto.scryptSync(process.env.NEXTAUTH_SECRET || "default_secret", 'salt', 32);
+
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(process.env.NEXTAUTH_SECRET || "default_secret").digest();
 
 function encryptId(text) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text.toString());
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
+  const iv = crypto.randomBytes(12); 
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text.toString(), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  
+  return `${iv.toString('hex')}:${encrypted}:${authTag}`;
 }
 
 function decryptId(text) {
   try {
-    const textParts = text.split(':');
-    const iv = Buffer.from(textParts.shift(), 'hex');
-    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
+    const parts = text.split(':');
+    if (parts.length !== 3) return null;
+    
+    const [ivHex, encryptedHex, authTagHex] = parts;
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag); 
+    
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   } catch (e) {
-    return null;
+    return null; 
   }
 }
 
@@ -45,7 +53,6 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const usersFilter = searchParams.get("users")?.split(",").filter(Boolean) || [];
 
-  // 1. Find only the active users on this specific board
   const activeTaskEmails = await db.collection("tasks").distinct("userEmail");
   const relevantEmails = [...new Set([...activeTaskEmails, session.user.email])];
 
@@ -54,15 +61,13 @@ export async function GET(request) {
     .project({ _id: 1, nickname: 1, name: 1 })
     .toArray();
 
-  // 🛡️ SECURITY UPGRADE: Scramble the IDs and merge nickname into name
   const activeUsers = rawActiveUsers.map(user => ({
-    _id: encryptId(user._id.toString()), // Sends encrypted placeholder
-    name: user.nickname || user.name     // Only sends one display name field
+    _id: encryptId(user._id.toString()), 
+    name: user.nickname || user.name     
   }));
 
   const lists = await db.collection("lists").find({}).toArray();
   
-  // Decrypt incoming filter placeholders back into real Database IDs
   let filterEmails = [];
   if (usersFilter.length > 0) {
       const filterIds = usersFilter.map(decryptId).filter(id => id && isValidId(id)).map(id => new ObjectId(id));
@@ -127,31 +132,40 @@ export async function PATCH(request) {
 
   const body = await request.json();
   const client = await clientPromise;
-  const db = client.db("kanban_db");
+  const db = kanban_db; 
+  
+  const kanbanDb = client.db("kanban_db");
 
   if (body.type === "list") {
     if (!isValidId(body.listId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-    await db.collection("lists").updateOne({ _id: new ObjectId(body.listId) }, { $set: { name: body.newName } });
-    await logActivity(db, "EDIT_LIST", `Renamed a list to "${body.newName}"`, secureEmail);
+    await kanbanDb.collection("lists").updateOne({ _id: new ObjectId(body.listId) }, { $set: { name: body.newName } });
+    await logActivity(kanbanDb, "EDIT_LIST", `Renamed a list to "${body.newName}"`, secureEmail);
     return NextResponse.json({ success: true });
   }
 
   if (body.type === "edit_task") {
     if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-    await db.collection("tasks").updateOne({ _id: new ObjectId(body.taskId) }, { $set: { text: body.newText } });
-    await logActivity(db, "EDIT_TASK", `Updated task text to: "${body.newText}"`, secureEmail);
+    const result = await kanbanDb.collection("tasks").updateOne(
+      { _id: new ObjectId(body.taskId), userEmail: secureEmail }, 
+      { $set: { text: body.newText } }
+    );
+    if (result.matchedCount === 0) return NextResponse.json({ error: "Task not found or unauthorized" }, { status: 403 });
+    await logActivity(kanbanDb, "EDIT_TASK", `Updated task text to: "${body.newText}"`, secureEmail);
     return NextResponse.json({ success: true });
   }
 
   if (body.bulk) {
     const validTasks = body.tasks.filter(t => isValidId(t._id));
     const bulkOps = validTasks.map((task, index) => ({
-      updateOne: { filter: { _id: new ObjectId(task._id) }, update: { $set: { listId: task.listId, order: index } } }
+      updateOne: { 
+        filter: { _id: new ObjectId(task._id), userEmail: secureEmail },
+        update: { $set: { listId: task.listId, order: index } } 
+      }
     }));
     if (bulkOps.length > 0) {
-      await db.collection("tasks").bulkWrite(bulkOps);
+      await kanbanDb.collection("tasks").bulkWrite(bulkOps);
     }
-    if (body.logMessage) await logActivity(db, "MOVE_TASK", body.logMessage, secureEmail);
+    if (body.logMessage) await logActivity(kanbanDb, "MOVE_TASK", body.logMessage, secureEmail);
     return NextResponse.json({ success: true });
   }
 
@@ -168,6 +182,9 @@ export async function DELETE(request) {
   const db = client.db("kanban_db");
 
   if (body.type === "all_logs") {
+    if (secureEmail !== process.env.ADMIN_EMAIL) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     await db.collection("activity_logs").deleteMany({});
     return NextResponse.json({ success: true });
   }
@@ -182,12 +199,16 @@ export async function DELETE(request) {
 
   if (body.taskId) {
     if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-    const task = await db.collection("tasks").findOne({ _id: new ObjectId(body.taskId) });
+    const task = await db.collection("tasks").findOne({ 
+      _id: new ObjectId(body.taskId),
+      userEmail: secureEmail 
+    });
     if (task) {
       await db.collection("tasks").deleteOne({ _id: new ObjectId(body.taskId) });
       await logActivity(db, "DELETE_TASK", `Deleted task: "${task.text}"`, secureEmail);
+      return NextResponse.json({ success: true });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ error: "Task not found or unauthorized" }, { status: 403 });
   }
 
   return NextResponse.json({ success: true });

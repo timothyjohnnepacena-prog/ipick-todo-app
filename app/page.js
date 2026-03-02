@@ -168,7 +168,6 @@ export default function Home() {
       setLogs(data.logs || []); 
       
       if (data.users) {
-        // SECURITY UPGRADE: Map to ID instead of Email for filter buttons
         setActiveUsers(data.users.map(u => ({
           id: u._id,
           name: u.nickname || u.name || "User"

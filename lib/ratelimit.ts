@@ -5,7 +5,7 @@ import { Redis } from "@upstash/redis";
 // 5 requests per minute — prevents brute-force attacks
 export const authRatelimit = new Ratelimit({
     redis: Redis.fromEnv(),
-    limiter: Ratelimit.slidingWindow(5, "1 m"),
+    limiter: Ratelimit.slidingWindow(1, "1 m"),
     analytics: true,
 });
 

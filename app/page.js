@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { 
@@ -102,7 +102,6 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
             {listTasks.length}
           </span>
           <button onClick={handleAddTask} className="h-5 w-5 flex items-center justify-center bg-white text-[#12A55C] rounded-md shadow-sm hover:bg-[#12A55C] hover:text-white transition-colors text-[14px] font-bold" title="Add Task">+</button>
-          
           <div className="relative h-5">
             <button onClick={() => setMenuOpen(!menuOpen)} className="h-5 w-5 flex items-center justify-center bg-white text-slate-400 rounded-md shadow-sm hover:bg-slate-200 transition-colors text-[10px] font-black tracking-widest pb-1">...</button>
             {menuOpen && (
@@ -117,13 +116,11 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
           </div>
         </div>
       </div>
-      
       <SortableContext id={list._id} items={listTasks.map(t => t._id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-3 flex-1 min-h-[150px] relative z-10">
           {listTasks.map(task => <SortableTask key={task._id} task={task} fetchData={fetchData} session={session} />)}
         </div>
       </SortableContext>
-
       <button onClick={handleAddTask} className="w-full mt-4 py-2.5 bg-white text-[#12A55C] rounded-xl text-[10px] font-bold uppercase hover:bg-[#12A55C] hover:text-white transition-all shadow-sm border border-slate-200 relative z-10">
         + Add Task
       </button>
@@ -134,11 +131,9 @@ function KanbanColumn({ list, tasks, fetchData, session }) {
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
   const [activeTab, setActiveTab] = useState("board"); 
-  
   const [lists, setLists] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]); 
@@ -149,38 +144,37 @@ export default function Home() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 3 } }));
 
+  const fetchData = useCallback(async () => {
+    setFetching(true);
+    try {
+      const userQuery = selectedUsers.length ? `?users=${selectedUsers.join(",")}` : "";
+      const res = await fetch(`/api/todos${userQuery}`);
+      const data = await res.json();
+      setLists(data.lists || []);
+      setTasks(data.tasks || []);
+      setLogs(data.logs || []); 
+      if (data.users) {
+        setActiveUsers(data.users.map(u => ({
+          id: u._id, // Now perfectly matches the clicked state
+          name: u.name
+        })));
+      }
+    } finally { setFetching(false); }
+  }, [selectedUsers]);
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/auth/signin");
   }, [status, router]);
 
   useEffect(() => {
     if (session) fetchData();
-  }, [session, selectedUsers]);
+  }, [session, fetchData]);
 
-  const fetchData = async () => {
-    try {
-      const userQuery = selectedUsers.length ? `?users=${selectedUsers.join(",")}` : "";
-      const res = await fetch(`/api/todos${userQuery}`);
-      const data = await res.json();
-      
-      setLists(data.lists || []);
-      setTasks(data.tasks || []);
-      setLogs(data.logs || []); 
-      
-      if (data.users) {
-        setActiveUsers(data.users.map(u => ({
-          id: u._id,
-          name: u.nickname || u.name || "User"
-        })));
-      }
-    } finally { setFetching(false); }
-  };
-
-  const handleClearLogs = async () => {
-    if (confirm("Permanently delete all activity logs?")) {
-      await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs" }) });
-      fetchData();
-    }
+  const handleFilterToggle = (userId) => {
+    setFetching(true);
+    setSelectedUsers(prev => 
+      prev.includes(userId) ? prev.filter(e => e !== userId) : [...prev, userId]
+    );
   };
 
   const onDragStart = (event) => { setActiveTask(tasks.find(t => t._id === event.active.id)); };
@@ -191,71 +185,57 @@ export default function Home() {
     const activeId = active.id;
     const overId = over.id;
     if (activeId === overId) return;
-
     const isActiveTask = active.data.current?.type === "Task";
     const isOverTask = over.data.current?.type === "Task";
     const isOverList = over.data.current?.type === "List";
-
     if (!isActiveTask) return;
-
-    setTasks(prev => {
-      const activeIndex = prev.findIndex(t => t._id === activeId);
-      const overIndex = prev.findIndex(t => t._id === overId);
-
+    setTasks((prev) => {
+      const activeIndex = prev.findIndex((t) => t._id === activeId);
+      const overIndex = prev.findIndex((t) => t._id === overId);
       if (isOverTask && prev[activeIndex].listId !== prev[overIndex].listId) {
         const newTasks = [...prev];
-        newTasks[activeIndex].listId = newTasks[overIndex].listId;
+        newTasks[activeIndex].listId = prev[overIndex].listId;
         return arrayMove(newTasks, activeIndex, overIndex);
       }
       if (isOverList && prev[activeIndex].listId !== overId) {
         const newTasks = [...prev];
         newTasks[activeIndex].listId = overId;
-        return arrayMove(newTasks, activeIndex, newTasks.length - 1);
+        return arrayMove(newTasks, activeIndex, overIndex);
       }
       return prev;
     });
   };
 
   const onDragEnd = async (event) => {
-    const draggedTask = tasks.find(t => t._id === event.active.id);
-    setActiveTask(null);
     const { active, over } = event;
-    if (!over) return;
-
-    const activeIndex = tasks.findIndex(t => t._id === active.id);
-    const overIndex = tasks.findIndex(t => t._id === over.id);
-
+    if (!over) { setActiveTask(null); return; }
+    const activeId = active.id;
+    const overId = over.id;
+    const activeIndex = tasks.findIndex((t) => t._id === activeId);
+    const overIndex = tasks.findIndex((t) => t._id === overId);
     let updatedTasks = [...tasks];
-    if (activeIndex !== overIndex) {
-      updatedTasks = arrayMove(updatedTasks, activeIndex, overIndex);
+    if (activeId !== overId) {
+      updatedTasks = arrayMove(tasks, activeIndex, overIndex);
       setTasks(updatedTasks);
     }
-
-    const listIdToUpdate = updatedTasks[activeIndex].listId;
-    const tasksInList = updatedTasks.filter(t => t.listId === listIdToUpdate);
-
-    const isNewList = draggedTask.listId !== listIdToUpdate;
-    const newListName = lists.find(l => l._id === listIdToUpdate)?.name || "a list";
-    const logMessage = isNewList 
-        ? `Moved "${draggedTask.text}" into "${newListName}"`
-        : `Reordered tasks in "${newListName}"`;
-
+    const draggedTask = updatedTasks[overIndex];
+    const destList = lists.find(l => l._id === draggedTask.listId);
+    const logMessage = `Updated position for "${draggedTask.text}" in "${destList?.name || 'board'}"`;
     await fetch("/api/todos", { 
       method: "PATCH", 
       headers: { "Content-Type": "application/json" }, 
-      body: JSON.stringify({ bulk: true, tasks: tasksInList, logMessage }) 
+      body: JSON.stringify({ bulk: true, tasks: updatedTasks, logMessage }) 
     });
-    
+    setActiveTask(null);
     fetchData(); 
   };
 
   if (status === "loading" || (status === "authenticated" && fetching)) {
-    return <div className="min-h-screen bg-[#F1F3F6] flex items-center justify-center font-black text-[#12A55C] animate-pulse text-sm tracking-widest">LOADING IPICK BOARD...</div>;
+    return <div className="min-h-screen bg-[#F1F3F6] flex items-center justify-center font-black text-[#12A55C] animate-pulse text-sm tracking-widest uppercase">UPDATING IPICK BOARD...</div>;
   }
 
   if (session) {
     const nickname = session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0] || "User";
-
     return (
       <div className="flex flex-col md:flex-row h-screen bg-[#F1F3F6] overflow-hidden text-slate-800">
         <div className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-40 shrink-0">
@@ -268,21 +248,16 @@ export default function Home() {
             </button>
           </div>
         </div>
-
         {isMobileMenuOpen && (
           <div className="fixed inset-0 bg-slate-800/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
         )}
-
         <aside className={`fixed inset-y-0 left-0 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out z-50 md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarCollapsed ? 'md:w-20' : 'w-64'} shrink-0 shadow-xl md:shadow-sm`}>
           <div className={`p-5 hidden md:flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} border-b border-slate-100`}>
-            {!isSidebarCollapsed && (
-              <img src="/ipick-logo-navbar.png" alt="iPick Center" className="h-8 object-contain" />
-            )}
+            {!isSidebarCollapsed && <img src="/ipick-logo-navbar.png" alt="iPick Center" className="h-8 object-contain" />}
             <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="text-slate-400 hover:text-[#12A55C] transition-colors p-1 rounded-md hover:bg-slate-50">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
             </button>
           </div>
-
           <nav className="flex-1 mt-6 px-3 space-y-2">
             <button onClick={() => { setActiveTab("board"); setIsMobileMenuOpen(false); }} className={`w-full flex items-center p-3 rounded-xl transition-all font-bold text-sm ${activeTab === "board" ? "bg-[#12A55C] text-white shadow-md shadow-[#12A55C]/20" : "text-slate-500 hover:bg-slate-50 hover:text-[#12A55C]"} ${isSidebarCollapsed ? 'md:justify-center' : 'justify-start'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" /></svg>
@@ -293,7 +268,6 @@ export default function Home() {
               <span className={`ml-3 ${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>Activity Logs</span>
             </button>
           </nav>
-
           <div className="p-4 border-t border-slate-100 flex flex-col gap-2">
             <div className={`px-2 mb-1 ${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>
               <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Logged in as</p>
@@ -305,33 +279,32 @@ export default function Home() {
             </button>
           </div>
         </aside>
-
         <main className="flex-1 flex flex-col h-full overflow-hidden p-3 md:p-6 relative">
           {activeTab === "board" && (
             <div className="relative bg-white rounded-3xl p-4 md:p-8 border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col min-h-0">
               <div className="absolute inset-0 bg-[url('/ipick-logo-navbar.png')] bg-center bg-no-repeat bg-[length:70%] md:bg-[length:35%] opacity-[0.12] mix-blend-multiply pointer-events-none z-0"></div>
-
               <div className="relative z-20 w-full bg-slate-50/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-3 md:p-4 mb-4 md:mb-6 flex flex-wrap gap-2 md:gap-4 items-center shrink-0">
                 <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 px-1">Filter Board:</span>
-                <button onClick={() => setSelectedUsers([])} className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.length === 0 ? 'bg-[#12A55C] text-white border-[#12A55C]' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'}`}>ALL</button>
+                <button 
+                   onClick={() => { setFetching(true); setSelectedUsers([]); }} 
+                   className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.length === 0 ? 'bg-[#12A55C] text-white border-[#12A55C]' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'}`}
+                >
+                  ALL
+                </button>
                 {activeUsers.map(user => (
                   <button 
                     key={user.id} 
-                    onClick={() => setSelectedUsers(prev => prev.includes(user.id) ? prev.filter(e => e !== user.id) : [...prev, user.id])} 
+                    onClick={() => handleFilterToggle(user.id)} 
                     className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.includes(user.id) ? 'bg-[#F37A22] text-white border-[#F37A22] shadow-md shadow-[#F37A22]/20' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:border-[#F37A22]/40'}`}
                   >
                     {user.name.toUpperCase()}
                   </button>
                 ))}
               </div>
-
               <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
                 <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto overflow-y-hidden pb-4 flex-1 h-full">
                   {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} session={session} />)}
-                  
-                  <button onClick={async () => { const name = prompt("List Name:"); if (name) { await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name } }) }); fetchData(); } }} className="min-w-[280px] border-2 border-dashed border-slate-300 rounded-2xl p-6 text-slate-400 font-bold hover:bg-slate-50 hover:border-[#F37A22] hover:text-[#F37A22] transition-all text-xs uppercase tracking-widest relative z-10 bg-white/60 backdrop-blur-sm shrink-0">
-                    + New Column
-                  </button>
+                  <button onClick={async () => { const name = prompt("List Name:"); if (name) { await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name } }) }); fetchData(); } }} className="min-w-[280px] border-2 border-dashed border-slate-300 rounded-2xl p-6 text-slate-400 font-bold hover:bg-slate-50 hover:border-[#F37A22] hover:text-[#F37A22] transition-all text-xs uppercase tracking-widest relative z-10 bg-white/60 backdrop-blur-sm shrink-0">+ New Column</button>
                 </div>
                 <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>
                   {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
@@ -339,7 +312,6 @@ export default function Home() {
               </DndContext>
             </div>
           )}
-
           {activeTab === "logs" && (
             <div className="relative bg-white rounded-3xl p-4 md:p-8 border border-slate-200 shadow-sm overflow-auto flex-1 flex flex-col h-full">
                <div className="border-b border-slate-100 pb-4 mb-6 flex justify-between items-start md:items-center gap-4">
@@ -348,7 +320,7 @@ export default function Home() {
                    <p className="text-slate-400 text-xs md:text-sm mt-1">Track the history of board updates and tasks.</p>
                  </div>
                  
-                 <button onClick={handleClearLogs} className="bg-[#9E2A2B]/10 text-[#9E2A2B] px-3 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-[11px] font-bold hover:bg-[#9E2A2B]/20 transition-colors uppercase tracking-wider shrink-0 border border-[#9E2A2B]/20">
+                 <button onClick={async () => { if (confirm("Permanently delete all activity logs?")) { await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs" }) }); fetchData(); } }} className="bg-[#9E2A2B]/10 text-[#9E2A2B] px-3 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-[11px] font-bold hover:bg-[#9E2A2B]/20 transition-colors uppercase tracking-wider shrink-0 border border-[#9E2A2B]/20">
                    Delete All
                  </button>
                </div>

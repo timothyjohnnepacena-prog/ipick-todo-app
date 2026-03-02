@@ -1,25 +1,50 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import clientPromise from "@/lib/mongodb";
+import { z } from "zod";
+import { ratelimit } from "@/lib/ratelimit";
+import { headers } from "next/headers";
+
+const sendCodeSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
 
 export async function POST(request) {
   try {
-    const { email } = await request.json();
+    const headersList = await headers();
+    const ip = headersList.get("x-forwarded-for") || "127.0.0.1";
+    const { success } = await ratelimit.limit(`sendcode_${ip}`);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
 
+    const rawData = await request.json();
+    const validation = sendCodeSchema.safeParse(rawData);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Invalid email format." },
+        { status: 400 }
+      );
+    }
+
+    const { email } = validation.data;
     const client = await clientPromise;
     const db = client.db("kanban_db");
-    
-    let userRecord = await db.collection("temp_registrations").findOne({ email });
-    let secureCode = userRecord?.verificationCode;
 
-    if (!secureCode) {
-        const mainUser = await db.collection("users").findOne({ email });
-        secureCode = mainUser?.resetCode || mainUser?.verificationCode;
+    // Look up the code from temp_registrations only
+    const userRecord = await db
+      .collection("temp_registrations")
+      .findOne({ email });
+
+    if (!userRecord || !userRecord.verificationCode) {
+      // Return generic success to prevent enumeration
+      return NextResponse.json({ success: true });
     }
 
-    if (!secureCode) {
-        return NextResponse.json({ error: "No code generated for this email." }, { status: 404 });
-    }
+    const secureCode = userRecord.verificationCode;
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -59,6 +84,9 @@ export async function POST(request) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Email error:", err);
-    return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to send email" },
+      { status: 500 }
+    );
   }
 }

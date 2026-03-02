@@ -20,16 +20,16 @@ function VerifyForm() {
 
   const handleResend = async () => {
     setTimer(30);
-    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Server generates the code securely — never generate codes client-side
     await fetch("/api/profile/temp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, verificationCode: newCode, resendOnly: true }),
+      body: JSON.stringify({ email, name: "", nickname: "", username: "", resendOnly: true }),
     });
     await fetch("/api/email/send-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code: newCode }),
+      body: JSON.stringify({ email }),
     });
   };
 
@@ -56,8 +56,8 @@ function VerifyForm() {
     <div className="bg-white p-10 rounded-[2.5rem] shadow-xl w-full max-w-md text-center border border-slate-100">
       <h1 className="text-3xl font-black tracking-tight mb-2">Verification</h1>
       <p className="text-slate-400 text-sm mb-8 font-medium italic">Sent to: {email}</p>
-      
-      <input 
+
+      <input
         type="text"
         maxLength="6"
         placeholder="000000"
@@ -67,7 +67,7 @@ function VerifyForm() {
       />
 
       {error && <p className="text-red-500 font-bold mb-4">{error}</p>}
-      
+
       <button onClick={handleVerify} disabled={loading} className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-slate-900 mb-6">
         {loading ? "Verifying..." : "Verify Code"}
       </button>

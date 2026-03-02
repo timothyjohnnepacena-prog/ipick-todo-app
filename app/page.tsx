@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, memo } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -48,7 +48,7 @@ interface TaskCardProps {
     setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
-function TaskCard({ task, fetchData, isOverlay, isDragging, setTasks }: TaskCardProps) {
+const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: TaskCardProps) => {
     const { showPrompt, showConfirm, showAlert } = useModal();
     return (
         <div
@@ -101,7 +101,8 @@ function TaskCard({ task, fetchData, isOverlay, isDragging, setTasks }: TaskCard
             </div>
         </div>
     );
-}
+});
+TaskCard.displayName = "TaskCard";
 
 function SortableTask({ task, fetchData, setTasks }: { task: Task; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>> }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -115,7 +116,7 @@ function SortableTask({ task, fetchData, setTasks }: { task: Task; fetchData: (s
     );
 }
 
-function KanbanColumn({ list, tasks, fetchData, setTasks, setLists }: { list: List; tasks: Task[]; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; setLists: React.Dispatch<React.SetStateAction<List[]>> }) {
+const KanbanColumn = memo(({ list, tasks, fetchData, setTasks, setLists }: { list: List; tasks: Task[]; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; setLists: React.Dispatch<React.SetStateAction<List[]>> }) => {
     const { setNodeRef } = useDroppable({ id: list._id, data: { type: "List", list } });
     const [menuOpen, setMenuOpen] = useState(false);
     const listTasks = tasks.filter(t => t.listId === list._id);
@@ -178,7 +179,8 @@ function KanbanColumn({ list, tasks, fetchData, setTasks, setLists }: { list: Li
             </SortableContext>
         </div>
     );
-}
+});
+KanbanColumn.displayName = "KanbanColumn";
 
 function NewColumnButton({ fetchData, setLists }: { fetchData: (silent?: boolean) => void; setLists: React.Dispatch<React.SetStateAction<List[]>> }) {
     const { showPrompt } = useModal();

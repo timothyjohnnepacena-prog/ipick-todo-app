@@ -50,7 +50,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const usersFilter = searchParams.get("users")?.split(",").filter(Boolean) || [];
 
-    const activeTaskEmails = await db.collection("tasks").distinct("userEmail");
+    // Parallelize Independent Queries for Serverless Speed
+    const [activeTaskEmails, lists, logs] = await Promise.all([
+        db.collection("tasks").distinct("userEmail"),
+        db.collection("lists").find({}).toArray(),
+        db.collection("activity_logs").aggregate([
+            { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
+            { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, { $arrayElemAt: ["$authorDetails.name", 0] }, "User"] } } },
+            { $project: { userEmail: 0, authorDetails: 0 } },
+            { $sort: { createdAt: -1 } },
+            { $limit: 100 }
+        ]).toArray()
+    ]);
+
     const relevantEmails = [...new Set([...activeTaskEmails, serverEmail])];
 
     const rawActiveUsers = await db.collection("users")
@@ -63,8 +75,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         _id: user._id.toString(),
         name: (user.nickname || user.name) as string
     }));
-
-    const lists = await db.collection("lists").find({}).toArray();
 
     // Sanitize list response — strip MongoDB internals, only expose id + name
     const safeLists = lists.map(l => ({ _id: l._id.toString(), name: l.name }));
@@ -104,14 +114,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         displayName: t.displayName,
         createdAt: t.createdAt,
     }));
-
-    const logs = await db.collection("activity_logs").aggregate([
-        { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
-        { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, { $arrayElemAt: ["$authorDetails.name", 0] }, "User"] } } },
-        { $project: { userEmail: 0, authorDetails: 0 } },
-        { $sort: { createdAt: -1 } },
-        { $limit: 100 }
-    ]).toArray();
 
     // Sanitize logs — only expose what the frontend needs
     const safeLogs = logs.map(l => ({

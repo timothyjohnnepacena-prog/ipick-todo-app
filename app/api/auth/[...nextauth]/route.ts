@@ -103,7 +103,12 @@ export const authOptions: AuthOptions = {
  * This never exposes the email to the client — it reads directly from the encrypted JWT.
  */
 export async function getServerEmail(req: NextRequest): Promise<string | null> {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const isSecure = process.env.NODE_ENV === "production" || req.url.startsWith("https://");
+    const token = await getToken({
+        req,
+        secret: process.env.NEXTAUTH_SECRET,
+        secureCookie: isSecure
+    });
     return (token?.email as string) || null;
 }
 

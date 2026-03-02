@@ -42,12 +42,13 @@ interface ActiveUser {
 
 interface TaskCardProps {
     task: Task;
-    fetchData?: () => void;
+    fetchData?: (silent?: boolean) => void;
     isOverlay?: boolean;
     isDragging?: boolean;
+    setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
-function TaskCard({ task, fetchData, isOverlay, isDragging }: TaskCardProps) {
+function TaskCard({ task, fetchData, isOverlay, isDragging, setTasks }: TaskCardProps) {
     const { showPrompt, showConfirm, showAlert } = useModal();
     return (
         <div
@@ -65,15 +66,15 @@ function TaskCard({ task, fetchData, isOverlay, isDragging }: TaskCardProps) {
                         onClick={async () => {
                             const newText = await showPrompt({ title: "Edit Task", placeholder: "Enter new task text...", defaultValue: task.text, confirmText: "Save" });
                             if (newText && newText !== task.text) {
-                                const res = await fetch("/api/todos", {
+                                if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, text: newText } : t));
+                                fetch("/api/todos", {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ type: "edit_task", taskId: task._id, newText })
+                                }).then(async res => {
+                                    if (!res.ok) await showAlert({ title: "Permission Denied", message: "You don't have permission to edit this task.", variant: "danger" });
+                                    if (fetchData) fetchData(true);
                                 });
-                                if (!res.ok) {
-                                    await showAlert({ title: "Permission Denied", message: "You don't have permission to edit this task.", variant: "danger" });
-                                }
-                                if (fetchData) fetchData();
                             }
                         }}
                         className="text-[10px] font-bold text-slate-400 hover:text-blue-500 uppercase transition-colors"
@@ -85,11 +86,11 @@ function TaskCard({ task, fetchData, isOverlay, isDragging }: TaskCardProps) {
                         onClick={async () => {
                             const yes = await showConfirm({ title: "Delete Task", message: `Remove "${task.text}" from the board?`, variant: "danger", confirmText: "Delete" });
                             if (yes) {
-                                const res = await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task._id }) });
-                                if (!res.ok) {
-                                    await showAlert({ title: "Permission Denied", message: "You don't have permission to delete this task.", variant: "danger" });
-                                }
-                                if (fetchData) fetchData();
+                                if (setTasks) setTasks(prev => prev.filter(t => t._id !== task._id));
+                                fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: task._id }) }).then(async res => {
+                                    if (!res.ok) await showAlert({ title: "Permission Denied", message: "You don't have permission to delete this task.", variant: "danger" });
+                                    if (fetchData) fetchData(true);
+                                });
                             }
                         }}
                         className="text-[10px] font-bold text-slate-400 hover:text-[#9E2A2B] uppercase transition-colors"
@@ -102,19 +103,19 @@ function TaskCard({ task, fetchData, isOverlay, isDragging }: TaskCardProps) {
     );
 }
 
-function SortableTask({ task, fetchData }: { task: Task; fetchData: () => void }) {
+function SortableTask({ task, fetchData, setTasks }: { task: Task; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>> }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: task._id, data: { type: "Task", task }
     });
     const style = { transform: CSS.Translate.toString(transform), transition };
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-            <TaskCard task={task} fetchData={fetchData} isDragging={isDragging} />
+            <TaskCard task={task} fetchData={fetchData} setTasks={setTasks} isDragging={isDragging} />
         </div>
     );
 }
 
-function KanbanColumn({ list, tasks, fetchData }: { list: List; tasks: Task[]; fetchData: () => void }) {
+function KanbanColumn({ list, tasks, fetchData, setTasks, setLists }: { list: List; tasks: Task[]; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; setLists: React.Dispatch<React.SetStateAction<List[]>> }) {
     const { setNodeRef } = useDroppable({ id: list._id, data: { type: "List", list } });
     const [menuOpen, setMenuOpen] = useState(false);
     const listTasks = tasks.filter(t => t.listId === list._id);
@@ -123,8 +124,8 @@ function KanbanColumn({ list, tasks, fetchData }: { list: List; tasks: Task[]; f
     const handleAddTask = async () => {
         const text = await showPrompt({ title: "New Task", placeholder: "What needs to be done?", confirmText: "Add Task" });
         if (text) {
-            await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", data: { text, listId: list._id } }) });
-            fetchData();
+            setTasks(prev => [...prev, { _id: `temp-${Date.now()}`, text, listId: list._id, order: 999, displayName: "You", createdAt: new Date().toISOString() }]);
+            fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "task", data: { text, listId: list._id } }) }).then(() => fetchData(true));
         }
     };
 
@@ -132,8 +133,8 @@ function KanbanColumn({ list, tasks, fetchData }: { list: List; tasks: Task[]; f
         setMenuOpen(false);
         const newName = await showPrompt({ title: "Rename List", placeholder: "Enter new list name...", defaultValue: list.name, confirmText: "Rename" });
         if (newName && newName !== list.name) {
-            await fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id, newName }) });
-            fetchData();
+            setLists(prev => prev.map(l => l._id === list._id ? { ...l, name: newName } : l));
+            fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id, newName }) }).then(() => fetchData(true));
         }
     };
 
@@ -141,8 +142,9 @@ function KanbanColumn({ list, tasks, fetchData }: { list: List; tasks: Task[]; f
         setMenuOpen(false);
         const yes = await showConfirm({ title: "Delete List", message: `This will permanently delete "${list.name}" and ALL tasks inside it.`, variant: "danger", confirmText: "Delete List" });
         if (yes) {
-            await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id }) });
-            fetchData();
+            setLists(prev => prev.filter(l => l._id !== list._id));
+            setTasks(prev => prev.filter(t => t.listId !== list._id));
+            fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", listId: list._id }) }).then(() => fetchData(true));
         }
     };
 
@@ -171,22 +173,22 @@ function KanbanColumn({ list, tasks, fetchData }: { list: List; tasks: Task[]; f
             </div>
             <SortableContext id={list._id} items={listTasks.map(t => t._id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-3 flex-1 min-h-[150px] relative z-10">
-                    {listTasks.map(task => <SortableTask key={task._id} task={task} fetchData={fetchData} />)}
+                    {listTasks.map(task => <SortableTask key={task._id} task={task} fetchData={fetchData} setTasks={setTasks} />)}
                 </div>
             </SortableContext>
         </div>
     );
 }
 
-function NewColumnButton({ fetchData }: { fetchData: () => void }) {
+function NewColumnButton({ fetchData, setLists }: { fetchData: (silent?: boolean) => void; setLists: React.Dispatch<React.SetStateAction<List[]>> }) {
     const { showPrompt } = useModal();
     return (
         <button
             onClick={async () => {
                 const name = await showPrompt({ title: "New Column", placeholder: "Enter column name...", confirmText: "Create" });
                 if (name) {
-                    await fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name } }) });
-                    fetchData();
+                    setLists(prev => [...prev, { _id: `temp-${Date.now()}`, name }]);
+                    fetch("/api/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "list", data: { name } }) }).then(() => fetchData(true));
                 }
             }}
             className="w-[85vw] max-w-[320px] md:min-w-[280px] md:w-[280px] snap-center border-2 border-dashed border-slate-300 rounded-2xl p-6 text-slate-400 font-bold hover:bg-slate-50 hover:border-[#F37A22] hover:text-[#F37A22] transition-all text-xs uppercase tracking-widest relative z-10 bg-white/60 backdrop-blur-sm shrink-0"
@@ -196,15 +198,15 @@ function NewColumnButton({ fetchData }: { fetchData: () => void }) {
     );
 }
 
-function DeleteLogsButton({ fetchData }: { fetchData: () => void }) {
+function DeleteLogsButton({ fetchData, setLogs }: { fetchData: (silent?: boolean) => void; setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>> }) {
     const { showConfirm } = useModal();
     return (
         <button
             onClick={async () => {
                 const yes = await showConfirm({ title: "Clear All Logs", message: "This will permanently delete all activity logs. This action cannot be undone.", variant: "danger", confirmText: "Delete All" });
                 if (yes) {
-                    await fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs" }) });
-                    fetchData();
+                    setLogs([]);
+                    fetch("/api/todos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "all_logs" }) }).then(() => fetchData(true));
                 }
             }}
             className="bg-[#9E2A2B]/10 text-[#9E2A2B] px-3 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-[11px] font-bold hover:bg-[#9E2A2B]/20 transition-colors uppercase tracking-wider shrink-0 border border-[#9E2A2B]/20"
@@ -230,8 +232,8 @@ export default function Home() {
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 3 } }));
 
-    const fetchData = useCallback(async () => {
-        setFetching(true);
+    const fetchData = useCallback(async (silent = false) => {
+        if (!silent) setFetching(true);
         try {
             const userQuery = selectedUsers.length ? `?users=${selectedUsers.join(",")}` : "";
             const res = await fetch(`/api/todos${userQuery}`);
@@ -331,17 +333,11 @@ export default function Home() {
         const destList = lists.find(l => l._id === draggedTask.listId);
         const logMessage = `Updated position for "${draggedTask.text}" in "${destList?.name || 'board'}"`;
 
-        try {
-            await fetch("/api/todos", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bulk: true, tasks: updatedTasks, logMessage })
-            });
-        } catch {
-            // Silently handle network errors — fetchData will recover state
-        }
-
-        fetchData();
+        fetch("/api/todos", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bulk: true, tasks: updatedTasks, logMessage })
+        }).then(() => fetchData(true)).catch(() => fetchData(true));
     };
 
     if (status === "loading") {
@@ -423,8 +419,8 @@ export default function Home() {
                             </div>
                             <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
                                 <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto pb-4 snap-x snap-mandatory flex-1">
-                                    {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} />)}
-                                    <NewColumnButton fetchData={fetchData} />
+                                    {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} setTasks={setTasks} setLists={setLists} />)}
+                                    <NewColumnButton fetchData={fetchData} setLists={setLists} />
                                 </div>
                                 <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>
                                     {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
@@ -440,7 +436,7 @@ export default function Home() {
                                     <p className="text-slate-400 text-xs md:text-sm mt-1">Track the history of board updates and tasks.</p>
                                 </div>
 
-                                <DeleteLogsButton fetchData={fetchData} />
+                                <DeleteLogsButton fetchData={fetchData} setLogs={setLogs} />
                             </div>
 
                             {logs.length === 0 ? (

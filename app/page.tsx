@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, memo } from "react";
+import React, { useState, useEffect, useCallback, memo, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -12,6 +12,27 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useModal } from "@/components/Modal";
+
+// ─── Toast Notification ───
+function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+    useEffect(() => {
+        const t = setTimeout(onDone, 2500);
+        return () => clearTimeout(t);
+    }, [onDone]);
+    return (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 bg-[#9E2A2B] text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold uppercase tracking-widest animate-scaleIn pointer-events-none">
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+            {message}
+        </div>
+    );
+}
+
+function useToast() {
+    const [toast, setToast] = useState<string | null>(null);
+    const show = useCallback((msg: string) => setToast(msg), []);
+    const node = toast ? <Toast message={toast} onDone={() => setToast(null)} /> : null;
+    return { show, node };
+}
 
 interface Task {
     _id: string;
@@ -46,16 +67,25 @@ interface TaskCardProps {
     isOverlay?: boolean;
     isDragging?: boolean;
     setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+    currentUserName?: string;
+    showToast?: (msg: string) => void;
 }
 
-const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: TaskCardProps) => {
+const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, currentUserName, showToast }: TaskCardProps) => {
     const { showPrompt, showConfirm, showAlert } = useModal();
+    const isOwner = !currentUserName || task.displayName.toLowerCase() === currentUserName.toLowerCase();
     return (
         <div
-            className={`bg-white p-4 rounded-xl border shadow-sm touch-none transition-all group ${isOverlay ? 'border-[#F37A22] shadow-2xl scale-105 rotate-2 cursor-grabbing' : 'border-slate-100 cursor-grab'
+            className={`bg-white p-4 rounded-xl border shadow-sm touch-none transition-all group ${isOverlay ? 'border-[#F37A22] shadow-2xl scale-105 rotate-2 cursor-grabbing' :
+                    isOwner ? 'border-slate-100 cursor-grab' : 'border-slate-200 cursor-not-allowed opacity-80'
                 } ${isDragging ? 'opacity-30' : 'opacity-100'}`}
         >
-            <p className="font-semibold text-slate-700 text-xs mb-3 leading-snug">{task.text}</p>
+            <div className="flex items-start justify-between gap-2 mb-1">
+                <p className="font-semibold text-slate-700 text-xs mb-3 leading-snug flex-1">{task.text}</p>
+                {!isOwner && (
+                    <svg className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                )}
+            </div>
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-50">
                 <span className="text-[10px] font-bold text-[#F37A22] bg-[#F37A22]/10 px-2 py-0.5 rounded-md uppercase">
                     {task.displayName}
@@ -64,6 +94,7 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: Tas
                     <button
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={async () => {
+                            if (!isOwner) { showToast?.("You can't edit someone else's task"); return; }
                             const newText = await showPrompt({ title: "Edit Task", placeholder: "Enter new task text...", defaultValue: task.text, confirmText: "Save" });
                             if (newText && newText !== task.text) {
                                 if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, text: newText } : t));
@@ -77,13 +108,15 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: Tas
                                 });
                             }
                         }}
-                        className="text-[10px] font-bold text-slate-400 hover:text-blue-500 uppercase transition-colors"
+                        className={`text-[10px] font-bold uppercase transition-colors ${isOwner ? 'text-slate-400 hover:text-blue-500' : 'text-slate-300 cursor-not-allowed'
+                            }`}
                     >
                         Edit
                     </button>
                     <button
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={async () => {
+                            if (!isOwner) { showToast?.("You can't delete someone else's task"); return; }
                             const yes = await showConfirm({ title: "Delete Task", message: `Remove "${task.text}" from the board?`, variant: "danger", confirmText: "Delete" });
                             if (yes) {
                                 if (setTasks) setTasks(prev => prev.filter(t => t._id !== task._id));
@@ -93,7 +126,8 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: Tas
                                 });
                             }
                         }}
-                        className="text-[10px] font-bold text-slate-400 hover:text-[#9E2A2B] uppercase transition-colors"
+                        className={`text-[10px] font-bold uppercase transition-colors ${isOwner ? 'text-slate-400 hover:text-[#9E2A2B]' : 'text-slate-300 cursor-not-allowed'
+                            }`}
                     >
                         Remove
                     </button>
@@ -104,19 +138,27 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks }: Tas
 });
 TaskCard.displayName = "TaskCard";
 
-function SortableTask({ task, fetchData, setTasks }: { task: Task; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>> }) {
+function SortableTask({ task, fetchData, setTasks, currentUserName, showToast }: { task: Task; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; currentUserName: string; showToast: (msg: string) => void }) {
+    const isOwner = task.displayName.toLowerCase() === currentUserName.toLowerCase();
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: task._id, data: { type: "Task", task }
+        id: task._id, data: { type: "Task", task },
+        disabled: !isOwner,
     });
     const style = { transform: CSS.Translate.toString(transform), transition };
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-            <TaskCard task={task} fetchData={fetchData} setTasks={setTasks} isDragging={isDragging} />
+        <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            {...(isOwner ? listeners : {})}
+            onPointerDown={!isOwner ? (e) => { e.stopPropagation(); showToast("You can only move your own tasks"); } : undefined}
+        >
+            <TaskCard task={task} fetchData={fetchData} setTasks={setTasks} isDragging={isDragging} currentUserName={currentUserName} showToast={showToast} />
         </div>
     );
 }
 
-const KanbanColumn = memo(({ list, tasks, fetchData, setTasks, setLists }: { list: List; tasks: Task[]; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; setLists: React.Dispatch<React.SetStateAction<List[]>> }) => {
+const KanbanColumn = memo(({ list, tasks, fetchData, setTasks, setLists, currentUserName, showToast }: { list: List; tasks: Task[]; fetchData: (silent?: boolean) => void; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; setLists: React.Dispatch<React.SetStateAction<List[]>>; currentUserName: string; showToast: (msg: string) => void }) => {
     const { setNodeRef } = useDroppable({ id: list._id, data: { type: "List", list } });
     const [menuOpen, setMenuOpen] = useState(false);
     const listTasks = tasks.filter(t => t.listId === list._id);
@@ -174,7 +216,7 @@ const KanbanColumn = memo(({ list, tasks, fetchData, setTasks, setLists }: { lis
             </div>
             <SortableContext id={list._id} items={listTasks.map(t => t._id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-3 flex-1 min-h-[150px] relative z-10">
-                    {listTasks.map(task => <SortableTask key={task._id} task={task} fetchData={fetchData} setTasks={setTasks} />)}
+                    {listTasks.map(task => <SortableTask key={task._id} task={task} fetchData={fetchData} setTasks={setTasks} currentUserName={currentUserName} showToast={showToast} />)}
                 </div>
             </SortableContext>
         </div>
@@ -231,6 +273,7 @@ export default function Home() {
     const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
     const [fetching, setFetching] = useState(true);
     const [activeTask, setActiveTask] = useState<Task | null>(null);
+    const { show: showToast, node: toastNode } = useToast();
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 3 } }));
 
@@ -276,7 +319,14 @@ export default function Home() {
     };
 
     const onDragStart = (event: DragStartEvent) => {
-        setActiveTask(tasks.find(t => t._id === event.active.id) || null);
+        const task = tasks.find(t => t._id === event.active.id);
+        if (!task) return;
+        const nickname = session?.user?.name?.split(' ')[0] || "";
+        if (task.displayName.toLowerCase() !== nickname.toLowerCase()) {
+            showToast("You can only move your own tasks");
+            return;
+        }
+        setActiveTask(task);
     };
 
     const onDragOver = (event: DragOverEvent) => {
@@ -411,6 +461,7 @@ export default function Home() {
                     </div>
                 </aside>
                 <main className="flex-1 flex flex-col h-full overflow-auto p-3 md:p-6 relative">
+                    {toastNode}
                     {activeTab === "board" && (
                         <div className="relative bg-white rounded-3xl p-2 md:p-8 border border-slate-200 shadow-sm overflow-auto flex-1 flex flex-col min-h-0">
                             <div className="absolute inset-0 bg-[url('/ipick-logo-navbar.png')] bg-center bg-no-repeat bg-[length:70%] md:bg-[length:35%] opacity-[0.12] mix-blend-multiply pointer-events-none z-0"></div>
@@ -434,7 +485,7 @@ export default function Home() {
                             </div>
                             <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
                                 <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto pb-4 snap-x snap-mandatory flex-1">
-                                    {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} setTasks={setTasks} setLists={setLists} />)}
+                                    {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} setTasks={setTasks} setLists={setLists} currentUserName={nickname} showToast={showToast} />)}
                                     <NewColumnButton fetchData={fetchData} setLists={setLists} />
                                 </div>
                                 <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>

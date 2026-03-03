@@ -1,3 +1,4 @@
+// app/api/auth/[...nextauth]/route.ts
 import NextAuth, { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import clientPromise from "@/lib/mongodb";
@@ -24,7 +25,7 @@ export const authOptions: AuthOptions = {
             },
             async authorize(credentials) {
                 const headersList = await headers();
-                const ip = headersList.get("x-forwarded-for") || "127.0.0.1";
+                const ip = headersList.get("x-forwarded-for")?.split(',')[0] || "unknown";
                 const { success } = await ratelimit.limit(`login_${ip}`);
 
                 if (!success) {
@@ -77,12 +78,11 @@ export const authOptions: AuthOptions = {
         },
         async session({ session, token }) {
             if (token) {
-                // Only expose a nickname (first name) to the client — never email or internal IDs
                 const firstName = (token.name as string)?.split(" ")[0] || "User";
                 session.user = {
                     name: firstName,
-                    id: crypto.createHash("sha256").update(token.email as string).digest("hex").slice(0, 12),
-                    email: "", // Stripped — email stays in JWT only (server-side)
+                    id: crypto.createHash("sha256").update(token.email as string).digest("hex").slice(0, 16),
+                    email: "",
                 };
             }
             return session;
@@ -95,19 +95,27 @@ export const authOptions: AuthOptions = {
         strategy: "jwt",
         maxAge: 24 * 60 * 60,
     },
+    // Force secure cookies for HTTPS
+    cookies: {
+        sessionToken: {
+            name: `__Secure-next-auth.session-token`,
+            options: {
+                httpOnly: true,
+                sameSite: 'lax',
+                path: '/',
+                secure: true // Explicitly forced to true for HTTPS
+            }
+        }
+    },
     secret: process.env.NEXTAUTH_SECRET,
 };
 
-/**
- * Securely extract the user's email from the JWT token (server-side only).
- * This never exposes the email to the client — it reads directly from the encrypted JWT.
- */
 export async function getServerEmail(req: NextRequest): Promise<string | null> {
-    const isSecure = process.env.NODE_ENV === "production" || req.url.startsWith("https://");
+    // Force secureCookie to true to match the HTTPS requirement
     const token = await getToken({
         req,
         secret: process.env.NEXTAUTH_SECRET,
-        secureCookie: isSecure
+        secureCookie: true
     });
     return (token?.email as string) || null;
 }

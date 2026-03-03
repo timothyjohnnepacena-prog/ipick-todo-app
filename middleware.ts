@@ -1,3 +1,4 @@
+// middleware.ts
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest): NextResponse {
@@ -5,48 +6,21 @@ export function middleware(request: NextRequest): NextResponse {
     const response = NextResponse.next();
 
     if (pathname.startsWith("/api/")) {
-        // ─── Security Headers for ALL API responses ───
+        // Enforce secure headers for HTTPS
         response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
         response.headers.set("Pragma", "no-cache");
         response.headers.set("X-Content-Type-Options", "nosniff");
         response.headers.set("X-Frame-Options", "DENY");
+        response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
         const secFetchSite = request.headers.get("sec-fetch-site");
-        const secFetchMode = request.headers.get("sec-fetch-mode");
 
-        // ─── NextAuth routes — let NextAuth handle them, but add security headers ───
-        const isNextAuthRoute = pathname.startsWith("/api/auth/");
-        if (isNextAuthRoute) {
-            // Block direct browser navigation to the session endpoint
-            if (pathname === "/api/auth/session") {
-                if (secFetchMode === "navigate" || secFetchSite === "none") {
-                    return NextResponse.json(
-                        { error: "Forbidden" },
-                        { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } }
-                    );
-                }
-            }
-            return response;
-        }
-
-        // ─── CSRF Protection: block cross-origin requests ───
+        // CSRF Protection: Only allow same-origin requests over HTTPS
         if (secFetchSite && secFetchSite !== "same-origin") {
             return NextResponse.json(
                 { error: "Forbidden" },
-                { status: 403, headers: { "Cache-Control": "no-store" } }
+                { status: 403 }
             );
-        }
-
-        // ─── Content-Type enforcement for mutating requests ───
-        const method = request.method.toUpperCase();
-        if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
-            const contentType = request.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                return NextResponse.json(
-                    { error: "Invalid content type" },
-                    { status: 415, headers: { "Cache-Control": "no-store" } }
-                );
-            }
         }
     }
 

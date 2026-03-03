@@ -1,3 +1,4 @@
+// app/api/profile/route.ts
 import clientPromise from "@/lib/mongodb";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!serverEmail) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const headersList = await headers();
-    const ip = headersList.get("x-forwarded-for") || "127.0.0.1";
+    const ip = headersList.get("x-forwarded-for")?.split(',')[0] || "unknown";
     const { success } = await apiRatelimit.limit(`profile_${ip}`);
     if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 

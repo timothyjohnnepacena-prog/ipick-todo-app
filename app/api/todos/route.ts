@@ -50,7 +50,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const usersFilter = searchParams.get("users")?.split(",").filter(Boolean) || [];
 
-    // Parallelize Independent Queries for Serverless Speed
     const [activeTaskEmails, lists, logs] = await Promise.all([
         db.collection("tasks").distinct("userEmail"),
         db.collection("lists").find({ userEmail: serverEmail }).toArray(),
@@ -70,26 +69,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .project({ _id: 1, nickname: 1, name: 1 })
         .toArray();
 
-    // Only expose safe user IDs and display names — no emails
     const activeUsers = rawActiveUsers.map(user => ({
         _id: user._id.toString(),
         name: (user.nickname || user.name) as string
     }));
 
-    // Sanitize list response — strip MongoDB internals, only expose id + name
     const safeLists = lists.map(l => ({ _id: l._id.toString(), name: l.name }));
 
     let filterEmails: string[] = [];
     if (usersFilter.length > 0) {
         const filterIds = usersFilter.filter(isValidId).map(id => new ObjectId(id));
         if (filterIds.length > 0) {
-            // INFO DISCLOSURE FIX: Only return emails for active users on the board
             const usersWithEmails = await db.collection("users").find({ _id: { $in: filterIds }, email: { $in: activeTaskEmails } }).project({ email: 1 }).toArray();
             filterEmails = usersWithEmails.map(u => u.email as string);
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pipeline: any[] = [
         { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
         { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, { $arrayElemAt: ["$authorDetails.name", 0] }, "User"] } } },
@@ -105,7 +100,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const tasks = await db.collection("tasks").aggregate(pipeline).toArray();
 
-    // Sanitize tasks — convert _id to string, strip any leftover internal fields
     const safeTasks = tasks.map(t => ({
         _id: t._id.toString(),
         text: t.text,
@@ -118,7 +112,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         completed: !!t.completed,
     }));
 
-    // Sanitize logs — only expose what the frontend needs
     const safeLogs = logs.map(l => ({
         _id: l._id.toString(),
         action: l.action,
@@ -185,7 +178,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         const safeNewName = sanitize(String(body.newName || "").slice(0, 100));
         if (!safeNewName) return NextResponse.json({ error: "List name is required" }, { status: 400 });
 
-        // SECURITY: Ensured `userEmail: serverEmail` to fix IDOR
         const result = await kanbanDb.collection("lists").updateOne({ _id: new ObjectId(body.listId), userEmail: serverEmail }, { $set: { name: safeNewName } });
         if (result.matchedCount === 0) return NextResponse.json({ error: "List not found" }, { status: 404 });
 
@@ -198,7 +190,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         const safeNewText = sanitize(String(body.newText || "").slice(0, 500));
         if (!safeNewText) return NextResponse.json({ error: "Task text is required" }, { status: 400 });
 
-        // IDOR FIX: Ensure the user owns the task they are trying to edit
         const result = await kanbanDb.collection("tasks").updateOne(
             { _id: new ObjectId(body.taskId), userEmail: serverEmail },
             { $set: { text: safeNewText } }
@@ -211,7 +202,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (body.type === "mark_done") {
         if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-        // Look up the task first to get its listId, then resolve the list name
         const taskToComplete = await kanbanDb.collection("tasks").findOne({ _id: new ObjectId(body.taskId), userEmail: serverEmail });
         if (!taskToComplete) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
@@ -221,7 +211,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
             if (list) listName = list.name;
         }
 
-        // IDOR FIX: Ensure the user owns the task
         const result = await kanbanDb.collection("tasks").findOneAndUpdate(
             { _id: new ObjectId(body.taskId), userEmail: serverEmail },
             { $set: { completed: true, completedAt: new Date(), listName } },
@@ -236,7 +225,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
     if (body.bulk) {
         const validTasks = (body.tasks as BulkTask[]).filter((t) => isValidId(t._id));
-        // IDOR FIX: Ensure the user owns all tasks being moved
         const bulkOps = validTasks.map((task, index) => ({
             updateOne: {
                 filter: { _id: new ObjectId(task._id), userEmail: serverEmail },
@@ -276,16 +264,13 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     if (body.type === "list") {
         if (!isValidId(body.listId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-        // SECURITY: Ensured `userEmail: serverEmail` to fix IDOR
         const list = await db.collection("lists").findOne({ _id: new ObjectId(body.listId), userEmail: serverEmail });
         if (list) {
-            // BACKEND VALIDATION: Only block deletion if there are uncompleted tasks
             const activeTaskCount = await db.collection("tasks").countDocuments({ listId: body.listId, completed: { $ne: true } });
             if (activeTaskCount > 0) {
                 return NextResponse.json({ error: "List still has active tasks" }, { status: 400 });
             }
 
-            // Only delete uncompleted tasks — preserve finished tasks for the report
             await db.collection("tasks").deleteMany({ listId: body.listId, completed: { $ne: true } });
             await db.collection("lists").deleteOne({ _id: new ObjectId(body.listId) });
             await logActivity(db, "DELETE_LIST", `Deleted list: "${list.name}"`, serverEmail);
@@ -297,7 +282,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     if (body.taskId) {
         if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-        // IDOR FIX: Ensure the user owns the task before deleting
         const task = await db.collection("tasks").findOne({ _id: new ObjectId(body.taskId), userEmail: serverEmail });
         if (task) {
             await db.collection("tasks").deleteOne({ _id: new ObjectId(body.taskId), userEmail: serverEmail });

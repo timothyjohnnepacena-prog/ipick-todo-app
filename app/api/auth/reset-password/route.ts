@@ -40,9 +40,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         const { email, code, newPassword } = validation.data;
 
-        // SECURITY FIX: Prevent distributed brute-force attacks on the 6-digit code
-        // by locking out the specific email address if it receives too many attempts,
-        // regardless of the IP address it's coming from.
         const { success: emailRateLimitSuccess } = await ratelimit.limit(`reset_email_${email}`);
         if (!emailRateLimitSuccess) {
             return NextResponse.json({ error: "Too many attempts for this email. Please try again later." }, { status: 429 });

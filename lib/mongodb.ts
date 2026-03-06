@@ -1,7 +1,6 @@
 import { MongoClient } from 'mongodb';
 
 const uri = process.env.MONGODB_URI;
-// Connection pooling config for serverless speed
 const options = {
     maxPoolSize: 10,
     minPoolSize: 1,
@@ -26,7 +25,6 @@ if (process.env.NODE_ENV === 'development') {
     }
     clientPromise = globalWithMongo._mongoClientPromise;
 } else {
-    // In production (Vercel), create a unified client using options
     client = new MongoClient(uri!, options);
     clientPromise = client.connect();
 }

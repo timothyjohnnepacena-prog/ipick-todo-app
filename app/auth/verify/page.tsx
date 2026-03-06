@@ -22,7 +22,6 @@ function VerifyForm() {
 
     const handleResend = async () => {
         setTimer(30);
-        // Server generates the code securely — never generate codes client-side
         await fetch("/api/profile/temp", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

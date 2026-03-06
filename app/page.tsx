@@ -13,7 +13,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useModal } from "@/components/Modal";
 
-// ─── Toast Notification ───
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
     useEffect(() => {
         const t = setTimeout(onDone, 2500);

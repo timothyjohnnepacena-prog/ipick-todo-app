@@ -1,4 +1,3 @@
-// app/api/profile/route.ts
 import clientPromise from "@/lib/mongodb";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";

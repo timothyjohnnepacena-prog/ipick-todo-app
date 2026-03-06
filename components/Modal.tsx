@@ -1,7 +1,6 @@
 "use client";
 import { useState, useCallback, createContext, useContext, useRef, useEffect } from "react";
 
-// ─── Types ───
 interface ModalButton {
     label: string;
     variant?: "primary" | "danger" | "ghost";
@@ -52,7 +51,6 @@ export function useModal(): ModalContextType {
     return ctx;
 }
 
-// ─── Icons ───
 function SuccessIcon() {
     return (
         <div className="h-12 w-12 rounded-2xl bg-[#12A55C]/10 flex items-center justify-center mx-auto mb-4">
@@ -83,7 +81,6 @@ function InfoIcon() {
     );
 }
 
-// ─── Button styles ───
 const btnBase = "px-5 py-3 rounded-2xl text-sm font-bold transition-all uppercase tracking-wider";
 const btnStyles: Record<string, string> = {
     primary: `${btnBase} bg-[#12A55C] text-white hover:bg-[#0e8549] shadow-lg shadow-[#12A55C]/20`,
@@ -91,7 +88,6 @@ const btnStyles: Record<string, string> = {
     ghost: `${btnBase} bg-slate-100 text-slate-500 hover:bg-slate-200`,
 };
 
-// ─── Modal Provider ───
 export function ModalProvider({ children }: { children: React.ReactNode }) {
     const [modal, setModal] = useState<ModalState>({ type: null, options: { message: "" }, resolve: null });
     const [inputValue, setInputValue] = useState("");

@@ -44,7 +44,6 @@ export default function RegisterPage() {
 
         setLoading(true);
 
-        // Strip confirmPassword before sending — server doesn't need it
         const { confirmPassword: _cp, ...registrationData } = formData;
 
         const res = await fetch("/api/profile/temp", {

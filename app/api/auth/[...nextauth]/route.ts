@@ -1,4 +1,3 @@
-// app/api/auth/[...nextauth]/route.ts
 import NextAuth, { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import clientPromise from "@/lib/mongodb";
@@ -54,7 +53,6 @@ export const authOptions: AuthOptions = {
                     );
 
                     if (isPasswordCorrect) {
-                        // Ensure the user has been verified by the admin
                         if (user.isVerifiedByAdmin !== true) {
                             throw new Error("Your account is pending admin verification. Please try again later.");
                         }

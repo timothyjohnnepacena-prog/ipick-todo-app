@@ -110,6 +110,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         createdAt: t.createdAt,
         completedAt: t.completedAt || null,
         completed: !!t.completed,
+        status: t.status || "pending",
     }));
 
     const safeLogs = logs.map(l => ({
@@ -199,6 +200,21 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ success: true });
     }
 
+    if (body.type === "update_status") {
+        if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+        const validStatuses = ["pending", "in_progress"];
+        if (!validStatuses.includes(body.status)) return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+
+        const result = await kanbanDb.collection("tasks").updateOne(
+            { _id: new ObjectId(body.taskId), userEmail: serverEmail },
+            { $set: { status: body.status } }
+        );
+        if (result.matchedCount === 0) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+        const statusLabel = body.status === "in_progress" ? "In Progress" : "Pending";
+        await logActivity(kanbanDb, "EDIT_TASK", `Changed task status to "${statusLabel}"`, serverEmail);
+        return NextResponse.json({ success: true });
+    }
+
     if (body.type === "mark_done") {
         if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
@@ -213,7 +229,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
         const result = await kanbanDb.collection("tasks").findOneAndUpdate(
             { _id: new ObjectId(body.taskId), userEmail: serverEmail },
-            { $set: { completed: true, completedAt: new Date(), listName } },
+            { $set: { completed: true, completedAt: new Date(), listName, status: "done" } },
             { returnDocument: "after" }
         );
 

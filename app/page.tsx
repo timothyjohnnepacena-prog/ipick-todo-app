@@ -42,6 +42,7 @@ interface Task {
     createdAt?: string;
     completedAt?: string;
     completed?: boolean;
+    status?: string;
 }
 
 interface List {
@@ -75,7 +76,39 @@ interface TaskCardProps {
 const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, currentUserName, showToast }: TaskCardProps) => {
     const { showPrompt, showConfirm, showAlert } = useModal();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const isOwner = !currentUserName || task.displayName.toLowerCase() === currentUserName.toLowerCase();
+
+    const currentStatus = task.status || "pending";
+    const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+        pending: { label: "Pending", bg: "bg-amber-100", text: "text-amber-600" },
+        in_progress: { label: "In Progress", bg: "bg-blue-100", text: "text-blue-600" },
+        done: { label: "Done", bg: "bg-emerald-100", text: "text-emerald-600" },
+    };
+    const badge = statusConfig[currentStatus] || statusConfig.pending;
+
+    const handleStatusChange = async (newStatus: string) => {
+        setStatusMenuOpen(false);
+        setMenuOpen(false);
+        if (!isOwner) { showToast?.("You can't change someone else's task status"); return; }
+        if (newStatus === currentStatus) return;
+
+        if (newStatus === "done") {
+            const yes = await showConfirm({ title: "Verify Task", message: "Verify or make sure that it is done. Proceed?", variant: "success", confirmText: "Yes, Done!" });
+            if (yes) {
+                if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, completed: true, status: "done" } : t));
+                fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "mark_done", taskId: task._id }) }).then(() => {
+                    if (fetchData) fetchData(true);
+                });
+            }
+        } else {
+            if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, status: newStatus } : t));
+            fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "update_status", taskId: task._id, status: newStatus }) }).then(() => {
+                if (fetchData) fetchData(true);
+            });
+        }
+    };
+
     return (
         <div
             className={`bg-white p-4 rounded-xl border shadow-sm touch-none transition-all group ${isOverlay ? 'border-[#F37A22] shadow-2xl scale-105 rotate-2 cursor-grabbing' :
@@ -83,42 +116,26 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                 } ${isDragging ? 'opacity-30' : 'opacity-100'}`}
         >
             <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-600 px-2 py-0.5 rounded-md">Pending</span>
+                <span className={`text-[9px] font-black uppercase tracking-wider ${badge.bg} ${badge.text} px-2 py-0.5 rounded-md`}>{badge.label}</span>
                 <div className="relative">
                     <button
                         onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => setMenuOpen(!menuOpen)}
+                        onClick={() => { setMenuOpen(!menuOpen); setStatusMenuOpen(false); }}
                         className="h-6 w-6 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" /></svg>
                     </button>
                     {menuOpen && (
                         <>
-                            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)}></div>
-                            <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden text-xs font-bold">
+                            <div className="fixed inset-0 z-40" onClick={() => { setMenuOpen(false); setStatusMenuOpen(false); }}></div>
+                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-visible text-xs font-bold">
                                 {!task.completed && (
                                     <>
                                         <button
                                             onClick={async () => {
                                                 setMenuOpen(false);
-                                                if (!isOwner) { showToast?.("You can't verify someone else's task"); return; }
-                                                const yes = await showConfirm({ title: "Verify Task", message: "Verify or make sure that it is done. Proceed?", variant: "success", confirmText: "Yes, Done!" });
-                                                if (yes) {
-                                                    if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, completed: true } : t));
-                                                    fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "mark_done", taskId: task._id }) }).then(() => {
-                                                        if (fetchData) fetchData(true);
-                                                    });
-                                                }
-                                            }}
-                                            className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${isOwner ? 'text-[#12A55C] hover:bg-[#12A55C]/10' : 'text-slate-300 cursor-not-allowed'}`}
-                                        >
-                                            ✓ Mark Done
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                setMenuOpen(false);
-                                                if (!isOwner) { showToast?.("You can't edit someone else's task"); return; }
-                                                const newText = await showPrompt({ title: "Edit Task", placeholder: "Enter new task text...", defaultValue: task.text, confirmText: "Save" });
+                                                if (!isOwner) { showToast?.("You can't rename someone else's task"); return; }
+                                                const newText = await showPrompt({ title: "Rename Task", placeholder: "Enter new task name...", defaultValue: task.text, confirmText: "Save" });
                                                 if (newText && newText !== task.text) {
                                                     if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, text: newText } : t));
                                                     fetch("/api/todos", {
@@ -126,15 +143,46 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                                                         headers: { "Content-Type": "application/json" },
                                                         body: JSON.stringify({ type: "edit_task", taskId: task._id, newText })
                                                     }).then(async res => {
-                                                        if (!res.ok) await showAlert({ title: "Permission Denied", message: "You don't have permission to edit this task.", variant: "danger" });
+                                                        if (!res.ok) await showAlert({ title: "Permission Denied", message: "You don't have permission to rename this task.", variant: "danger" });
                                                         if (fetchData) fetchData(true);
                                                     });
                                                 }
                                             }}
                                             className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${isOwner ? 'text-blue-500 hover:bg-blue-50' : 'text-slate-300 cursor-not-allowed'}`}
                                         >
-                                            ✎ Edit
+                                            ✎ Rename
                                         </button>
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setStatusMenuOpen(!statusMenuOpen)}
+                                                className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors flex items-center justify-between ${isOwner ? 'text-slate-600 hover:bg-slate-50' : 'text-slate-300 cursor-not-allowed'}`}
+                                            >
+                                                <span>⚡ Edit Status</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                                            </button>
+                                            {statusMenuOpen && (
+                                                <div className="absolute right-full top-0 mr-1 w-36 bg-white rounded-xl shadow-xl border border-slate-100 z-[60] overflow-hidden text-xs font-bold">
+                                                    <button
+                                                        onClick={() => handleStatusChange("pending")}
+                                                        className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors hover:bg-amber-50 ${currentStatus === "pending" ? 'text-amber-600 bg-amber-50/50' : 'text-slate-600'}`}
+                                                    >
+                                                        {currentStatus === "pending" && "● "} Pending
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleStatusChange("in_progress")}
+                                                        className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors hover:bg-blue-50 ${currentStatus === "in_progress" ? 'text-blue-600 bg-blue-50/50' : 'text-slate-600'}`}
+                                                    >
+                                                        {currentStatus === "in_progress" && "● "} In Progress
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleStatusChange("done")}
+                                                        className={`w-full text-left px-4 py-3 transition-colors hover:bg-emerald-50 ${currentStatus === "done" ? 'text-emerald-600 bg-emerald-50/50' : 'text-slate-600'}`}
+                                                    >
+                                                        {currentStatus === "done" && "● "} Done
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </>
                                 )}
                                 <button

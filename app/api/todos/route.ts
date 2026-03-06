@@ -53,7 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Parallelize Independent Queries for Serverless Speed
     const [activeTaskEmails, lists, logs] = await Promise.all([
         db.collection("tasks").distinct("userEmail"),
-        db.collection("lists").find({}).toArray(),
+        db.collection("lists").find({ userEmail: serverEmail }).toArray(),
         db.collection("activity_logs").aggregate([
             { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
             { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, { $arrayElemAt: ["$authorDetails.name", 0] }, "User"] } } },
@@ -110,9 +110,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         _id: t._id.toString(),
         text: t.text,
         listId: t.listId,
+        listName: t.listName || null,
         order: t.order,
         displayName: t.displayName,
         createdAt: t.createdAt,
+        completedAt: t.completedAt || null,
+        completed: !!t.completed,
     }));
 
     // Sanitize logs — only expose what the frontend needs
@@ -157,7 +160,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!taskValidation.success) return NextResponse.json({ error: "Invalid task data" }, { status: 400 });
     if (!isValidId(taskValidation.data.listId)) return NextResponse.json({ error: "Invalid List ID" }, { status: 400 });
     const safeText = sanitize(taskValidation.data.text);
-    await db.collection("tasks").insertOne({ text: safeText, listId: taskValidation.data.listId, userEmail: serverEmail, order: 999, createdAt: new Date() });
+    await db.collection("tasks").insertOne({ text: safeText, listId: taskValidation.data.listId, userEmail: serverEmail, order: 999, createdAt: new Date(), completed: false });
     await logActivity(db, "ADD_TASK", `Added a new task: "${safeText}"`, serverEmail);
     return NextResponse.json({ success: true });
 }
@@ -181,9 +184,11 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         if (!isValidId(body.listId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
         const safeNewName = sanitize(String(body.newName || "").slice(0, 100));
         if (!safeNewName) return NextResponse.json({ error: "List name is required" }, { status: 400 });
-        // IDOR FIX: Ensure user owns the list
+
+        // SECURITY: Ensured `userEmail: serverEmail` to fix IDOR
         const result = await kanbanDb.collection("lists").updateOne({ _id: new ObjectId(body.listId), userEmail: serverEmail }, { $set: { name: safeNewName } });
-        if (result.matchedCount === 0) return NextResponse.json({ error: "List not found or unauthorized" }, { status: 404 });
+        if (result.matchedCount === 0) return NextResponse.json({ error: "List not found" }, { status: 404 });
+
         await logActivity(kanbanDb, "EDIT_LIST", `Renamed a list to "${safeNewName}"`, serverEmail);
         return NextResponse.json({ success: true });
     }
@@ -200,6 +205,32 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         );
         if (result.matchedCount === 0) return NextResponse.json({ error: "Task not found" }, { status: 404 });
         await logActivity(kanbanDb, "EDIT_TASK", `Updated task text to: "${safeNewText}"`, serverEmail);
+        return NextResponse.json({ success: true });
+    }
+
+    if (body.type === "mark_done") {
+        if (!isValidId(body.taskId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+
+        // Look up the task first to get its listId, then resolve the list name
+        const taskToComplete = await kanbanDb.collection("tasks").findOne({ _id: new ObjectId(body.taskId), userEmail: serverEmail });
+        if (!taskToComplete) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+        let listName = "Deleted List";
+        if (taskToComplete.listId && isValidId(taskToComplete.listId)) {
+            const list = await kanbanDb.collection("lists").findOne({ _id: new ObjectId(taskToComplete.listId) });
+            if (list) listName = list.name;
+        }
+
+        // IDOR FIX: Ensure the user owns the task
+        const result = await kanbanDb.collection("tasks").findOneAndUpdate(
+            { _id: new ObjectId(body.taskId), userEmail: serverEmail },
+            { $set: { completed: true, completedAt: new Date(), listName } },
+            { returnDocument: "after" }
+        );
+
+        if (!result) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+        await logActivity(kanbanDb, "COMPLETE_TASK", `Marked task as done: "${result.text}"`, serverEmail);
         return NextResponse.json({ success: true });
     }
 
@@ -244,15 +275,23 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
 
     if (body.type === "list") {
         if (!isValidId(body.listId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-        // IDOR FIX: Ensure user owns the list before deleting
+
+        // SECURITY: Ensured `userEmail: serverEmail` to fix IDOR
         const list = await db.collection("lists").findOne({ _id: new ObjectId(body.listId), userEmail: serverEmail });
         if (list) {
-            await db.collection("lists").deleteOne({ _id: new ObjectId(body.listId), userEmail: serverEmail });
-            await db.collection("tasks").deleteMany({ listId: body.listId });
-            await logActivity(db, "DELETE_LIST", `Deleted a list and all enclosed tasks`, serverEmail);
+            // BACKEND VALIDATION: Only block deletion if there are uncompleted tasks
+            const activeTaskCount = await db.collection("tasks").countDocuments({ listId: body.listId, completed: { $ne: true } });
+            if (activeTaskCount > 0) {
+                return NextResponse.json({ error: "List still has active tasks" }, { status: 400 });
+            }
+
+            // Only delete uncompleted tasks — preserve finished tasks for the report
+            await db.collection("tasks").deleteMany({ listId: body.listId, completed: { $ne: true } });
+            await db.collection("lists").deleteOne({ _id: new ObjectId(body.listId) });
+            await logActivity(db, "DELETE_LIST", `Deleted list: "${list.name}"`, serverEmail);
             return NextResponse.json({ success: true });
         }
-        return NextResponse.json({ error: "List not found or unauthorized" }, { status: 404 });
+        return NextResponse.json({ error: "List not found" }, { status: 404 });
     }
 
     if (body.taskId) {

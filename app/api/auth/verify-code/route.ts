@@ -52,7 +52,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                     nickname: tempUser.nickname,
                     username: tempUser.username,
                     password: tempUser.password,
-                    registered: true
+                    registered: true,
+                    isVerifiedByAdmin: false // SECURITY: Default to pending admin approval
                 }
             },
             { upsert: true }

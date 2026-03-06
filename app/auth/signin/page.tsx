@@ -25,7 +25,11 @@ export default function SignInPage() {
         });
 
         if (res?.error) {
-            setError("Invalid login credentials");
+            if (res.error.includes("pending admin verification")) {
+                setError("Your account is pending admin verification. Contact the admin for assistance.");
+            } else {
+                setError("Invalid login credentials");
+            }
             setLoading(false);
         } else {
             router.push("/");

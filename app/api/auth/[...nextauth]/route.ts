@@ -54,6 +54,11 @@ export const authOptions: AuthOptions = {
                     );
 
                     if (isPasswordCorrect) {
+                        // Ensure the user has been verified by the admin
+                        if (user.isVerifiedByAdmin !== true) {
+                            throw new Error("Your account is pending admin verification. Please try again later.");
+                        }
+
                         return {
                             id: user._id.toString(),
                             name: user.name as string,
@@ -95,27 +100,13 @@ export const authOptions: AuthOptions = {
         strategy: "jwt",
         maxAge: 24 * 60 * 60,
     },
-    // Force secure cookies for HTTPS
-    cookies: {
-        sessionToken: {
-            name: `__Secure-next-auth.session-token`,
-            options: {
-                httpOnly: true,
-                sameSite: 'lax',
-                path: '/',
-                secure: true // Explicitly forced to true for HTTPS
-            }
-        }
-    },
     secret: process.env.NEXTAUTH_SECRET,
 };
 
 export async function getServerEmail(req: NextRequest): Promise<string | null> {
-    // Force secureCookie to true to match the HTTPS requirement
     const token = await getToken({
         req,
-        secret: process.env.NEXTAUTH_SECRET,
-        secureCookie: true
+        secret: process.env.NEXTAUTH_SECRET
     });
     return (token?.email as string) || null;
 }

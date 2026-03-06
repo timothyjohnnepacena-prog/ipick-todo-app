@@ -18,7 +18,7 @@ interface AlertOptions {
 interface ConfirmOptions {
     title?: string;
     message: string;
-    variant?: "danger" | "warning" | "info";
+    variant?: "danger" | "warning" | "info" | "success";
     confirmText?: string;
     cancelText?: string;
 }
@@ -156,14 +156,16 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
             const opts = modal.options as ConfirmOptions;
             return (
                 <>
-                    {(opts.variant === "danger" || opts.variant === "warning") ? <DangerIcon /> : <InfoIcon />}
+                    {(opts.variant === "danger" || opts.variant === "warning") && <DangerIcon />}
+                    {opts.variant === "success" && <SuccessIcon />}
+                    {(!opts.variant || opts.variant === "info") && <InfoIcon />}
                     {opts.title && <h3 className="text-lg font-black text-slate-800 mb-2 text-center">{opts.title}</h3>}
                     <p className="text-sm text-slate-500 text-center leading-relaxed mb-6">{opts.message}</p>
                     <div className="flex gap-3">
                         <button onClick={() => close(false)} className={`flex-1 ${btnStyles.ghost}`}>
                             {opts.cancelText || "Cancel"}
                         </button>
-                        <button onClick={() => close(true)} className={`flex-1 ${opts.variant === "danger" ? btnStyles.danger : btnStyles.primary}`}>
+                        <button onClick={() => close(true)} className={`flex-1 ${opts.variant === "danger" ? btnStyles.danger : opts.variant === "success" ? btnStyles.primary : btnStyles.primary}`}>
                             {opts.confirmText || "Confirm"}
                         </button>
                     </div>

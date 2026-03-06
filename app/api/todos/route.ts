@@ -52,7 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const [activeTaskEmails, lists, logs] = await Promise.all([
         db.collection("tasks").distinct("userEmail"),
-        db.collection("lists").find({ userEmail: serverEmail }).toArray(),
+        db.collection("lists").find({}).toArray(),
         db.collection("activity_logs").aggregate([
             { $lookup: { from: "users", localField: "userEmail", foreignField: "email", as: "authorDetails" } },
             { $addFields: { displayName: { $ifNull: [{ $arrayElemAt: ["$authorDetails.nickname", 0] }, { $arrayElemAt: ["$authorDetails.name", 0] }, "User"] } } },

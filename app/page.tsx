@@ -470,12 +470,7 @@ export default function Home() {
     if (session) {
         return (
             <div className="flex flex-col md:flex-row h-screen bg-[#F1F3F6] overflow-hidden text-slate-800 relative">
-                {fetching && (
-                    <div className="fixed bottom-6 right-6 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-100 flex items-center gap-2 z-[100] animate-pulse">
-                        <div className="w-2 h-2 rounded-full bg-[#12A55C]"></div>
-                        <span className="text-[10px] font-bold text-slate-500 tracking-wider">UPDATING...</span>
-                    </div>
-                )}
+
                 <div className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-40 shrink-0">
                     <img src="/ipick-logo-navbar.png" alt="iPick Center" className="h-8 object-contain" />
                     <div className="flex items-center gap-4">
@@ -526,33 +521,45 @@ export default function Home() {
                     {activeTab === "board" && (
                         <div className="relative bg-white rounded-3xl p-2 md:p-8 border border-slate-200 shadow-sm overflow-auto flex-1 flex flex-col min-h-0">
                             <div className="absolute inset-0 bg-[url('/ipick-logo-navbar.png')] bg-center bg-no-repeat bg-[length:70%] md:bg-[length:35%] opacity-[0.12] mix-blend-multiply pointer-events-none z-0"></div>
-                            <div className="relative z-20 w-full bg-slate-50/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-3 md:p-4 mb-4 md:mb-6 flex flex-wrap gap-2 md:gap-4 items-center shrink-0">
-                                <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 px-1">Filter Board:</span>
-                                <button
-                                    onClick={() => { setFetching(true); setSelectedUsers([]); }}
-                                    className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.length === 0 ? 'bg-[#12A55C] text-white border-[#12A55C]' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'}`}
-                                >
-                                    ALL
-                                </button>
-                                {activeUsers.map(user => (
-                                    <button
-                                        key={user.id}
-                                        onClick={() => handleFilterToggle(user.id)}
-                                        className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.includes(user.id) ? 'bg-[#F37A22] text-white border-[#F37A22] shadow-md shadow-[#F37A22]/20' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:border-[#F37A22]/40'}`}
-                                    >
-                                        {user.name.toUpperCase()}
-                                    </button>
-                                ))}
-                            </div>
-                            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
-                                <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto pb-4 snap-x snap-mandatory flex-1">
-                                    {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} setTasks={setTasks} setLists={setLists} currentUserName={nickname} showToast={showToast} />)}
-                                    <NewColumnButton fetchData={fetchData} setLists={setLists} />
+                            {fetching ? (
+                                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                                    <div className="relative h-12 w-12 mb-5">
+                                        <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                                        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#12A55C] animate-spin"></div>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Loading Tasks</p>
                                 </div>
-                                <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>
-                                    {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
-                                </DragOverlay>
-                            </DndContext>
+                            ) : (
+                                <>
+                                    <div className="relative z-20 w-full bg-slate-50/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-3 md:p-4 mb-4 md:mb-6 flex flex-wrap gap-2 md:gap-4 items-center shrink-0">
+                                        <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 px-1">Filter Board:</span>
+                                        <button
+                                            onClick={() => { setFetching(true); setSelectedUsers([]); }}
+                                            className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.length === 0 ? 'bg-[#12A55C] text-white border-[#12A55C]' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'}`}
+                                        >
+                                            ALL
+                                        </button>
+                                        {activeUsers.map(user => (
+                                            <button
+                                                key={user.id}
+                                                onClick={() => handleFilterToggle(user.id)}
+                                                className={`px-4 md:px-5 py-1.5 md:py-2 rounded-xl text-[10px] md:text-[11px] font-bold border transition-colors ${selectedUsers.includes(user.id) ? 'bg-[#F37A22] text-white border-[#F37A22] shadow-md shadow-[#F37A22]/20' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:border-[#F37A22]/40'}`}
+                                            >
+                                                {user.name.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
+                                        <div className="relative z-10 flex gap-4 md:gap-6 items-start overflow-x-auto pb-4 snap-x snap-mandatory flex-1">
+                                            {lists.map(list => <KanbanColumn key={list._id} list={list} tasks={tasks} fetchData={fetchData} setTasks={setTasks} setLists={setLists} currentUserName={nickname} showToast={showToast} />)}
+                                            <NewColumnButton fetchData={fetchData} setLists={setLists} />
+                                        </div>
+                                        <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>
+                                            {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
+                                        </DragOverlay>
+                                    </DndContext>
+                                </>
+                            )}
                         </div>
                     )}
                     {activeTab === "finished" && (() => {

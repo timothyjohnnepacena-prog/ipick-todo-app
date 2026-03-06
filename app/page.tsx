@@ -74,9 +74,8 @@ interface TaskCardProps {
 }
 
 const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, currentUserName, showToast }: TaskCardProps) => {
-    const { showPrompt, showConfirm, showAlert } = useModal();
+    const { showPrompt, showConfirm, showAlert, showSelect } = useModal();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const isOwner = !currentUserName || task.displayName.toLowerCase() === currentUserName.toLowerCase();
 
     const currentStatus = task.status || "pending";
@@ -87,13 +86,24 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
     };
     const badge = statusConfig[currentStatus] || statusConfig.pending;
 
-    const handleStatusChange = async (newStatus: string) => {
-        setStatusMenuOpen(false);
+    const handleEditStatus = async () => {
         setMenuOpen(false);
         if (!isOwner) { showToast?.("You can't change someone else's task status"); return; }
-        if (newStatus === currentStatus) return;
 
-        if (newStatus === "done") {
+        const selected = await showSelect({
+            title: "Edit Status",
+            message: "Choose a new status for this task.",
+            currentValue: currentStatus,
+            options: [
+                { value: "pending", label: "Pending", description: "Task has not been started yet", color: "#d97706", icon: "⏳" },
+                { value: "in_progress", label: "In Progress", description: "Task is currently being worked on", color: "#2563eb", icon: "🔄" },
+                { value: "done", label: "Done", description: "Task has been completed", color: "#12A55C", icon: "✓" },
+            ],
+        });
+
+        if (!selected || selected === currentStatus) return;
+
+        if (selected === "done") {
             const yes = await showConfirm({ title: "Verify Task", message: "Verify or make sure that it is done. Proceed?", variant: "success", confirmText: "Yes, Done!" });
             if (yes) {
                 if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, completed: true, status: "done" } : t));
@@ -102,8 +112,8 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                 });
             }
         } else {
-            if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, status: newStatus } : t));
-            fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "update_status", taskId: task._id, status: newStatus }) }).then(() => {
+            if (setTasks) setTasks(prev => prev.map(t => t._id === task._id ? { ...t, status: selected } : t));
+            fetch("/api/todos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "update_status", taskId: task._id, status: selected }) }).then(() => {
                 if (fetchData) fetchData(true);
             });
         }
@@ -120,15 +130,15 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                 <div className="relative">
                     <button
                         onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => { setMenuOpen(!menuOpen); setStatusMenuOpen(false); }}
+                        onClick={() => setMenuOpen(!menuOpen)}
                         className="h-6 w-6 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" /></svg>
                     </button>
                     {menuOpen && (
                         <>
-                            <div className="fixed inset-0 z-40" onClick={() => { setMenuOpen(false); setStatusMenuOpen(false); }}></div>
-                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-visible text-xs font-bold">
+                            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)}></div>
+                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden text-xs font-bold">
                                 {!task.completed && (
                                     <>
                                         <button
@@ -152,37 +162,12 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                                         >
                                             ✎ Rename
                                         </button>
-                                        <div className="relative">
-                                            <button
-                                                onClick={() => setStatusMenuOpen(!statusMenuOpen)}
-                                                className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors flex items-center justify-between ${isOwner ? 'text-slate-600 hover:bg-slate-50' : 'text-slate-300 cursor-not-allowed'}`}
-                                            >
-                                                <span>⚡ Edit Status</span>
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-                                            </button>
-                                            {statusMenuOpen && (
-                                                <div className="absolute right-full top-0 mr-1 w-36 bg-white rounded-xl shadow-xl border border-slate-100 z-[60] overflow-hidden text-xs font-bold">
-                                                    <button
-                                                        onClick={() => handleStatusChange("pending")}
-                                                        className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors hover:bg-amber-50 ${currentStatus === "pending" ? 'text-amber-600 bg-amber-50/50' : 'text-slate-600'}`}
-                                                    >
-                                                        {currentStatus === "pending" && "● "} Pending
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleStatusChange("in_progress")}
-                                                        className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors hover:bg-blue-50 ${currentStatus === "in_progress" ? 'text-blue-600 bg-blue-50/50' : 'text-slate-600'}`}
-                                                    >
-                                                        {currentStatus === "in_progress" && "● "} In Progress
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleStatusChange("done")}
-                                                        className={`w-full text-left px-4 py-3 transition-colors hover:bg-emerald-50 ${currentStatus === "done" ? 'text-emerald-600 bg-emerald-50/50' : 'text-slate-600'}`}
-                                                    >
-                                                        {currentStatus === "done" && "● "} Done
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <button
+                                            onClick={handleEditStatus}
+                                            className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${isOwner ? 'text-slate-600 hover:bg-slate-50' : 'text-slate-300 cursor-not-allowed'}`}
+                                        >
+                                            ⚡ Edit Status
+                                        </button>
                                     </>
                                 )}
                                 <button
@@ -216,7 +201,7 @@ const TaskCard = memo(({ task, fetchData, isOverlay, isDragging, setTasks, curre
                     <svg className="w-3 h-3 text-slate-400 shrink-0 ml-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
                 )}
             </div>
-        </div>
+        </div >
     );
 });
 TaskCard.displayName = "TaskCard";

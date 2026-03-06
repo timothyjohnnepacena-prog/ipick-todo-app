@@ -31,9 +31,25 @@ interface PromptOptions {
     cancelText?: string;
 }
 
+interface SelectOption {
+    value: string;
+    label: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+}
+
+interface SelectOptions {
+    title?: string;
+    message?: string;
+    options: SelectOption[];
+    currentValue?: string;
+    cancelText?: string;
+}
+
 interface ModalState {
-    type: "alert" | "confirm" | "prompt" | null;
-    options: AlertOptions | ConfirmOptions | PromptOptions;
+    type: "alert" | "confirm" | "prompt" | "select" | null;
+    options: AlertOptions | ConfirmOptions | PromptOptions | SelectOptions;
     resolve: ((value: boolean | string | null) => void) | null;
 }
 
@@ -41,6 +57,7 @@ interface ModalContextType {
     showAlert: (options: AlertOptions) => Promise<void>;
     showConfirm: (options: ConfirmOptions) => Promise<boolean>;
     showPrompt: (options: PromptOptions) => Promise<string | null>;
+    showSelect: (options: SelectOptions) => Promise<string | null>;
 }
 
 const ModalContext = createContext<ModalContextType | null>(null);
@@ -129,6 +146,12 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         });
     }, []);
 
+    const showSelect = useCallback((options: SelectOptions): Promise<string | null> => {
+        return new Promise((resolve) => {
+            setModal({ type: "select", options, resolve: (v) => resolve(v as string | null) });
+        });
+    }, []);
+
     const renderContent = () => {
         if (!modal.type) return null;
 
@@ -200,10 +223,55 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                 </>
             );
         }
+
+        if (modal.type === "select") {
+            const opts = modal.options as SelectOptions;
+            return (
+                <>
+                    <InfoIcon />
+                    {opts.title && <h3 className="text-lg font-black text-slate-800 mb-2 text-center">{opts.title}</h3>}
+                    {opts.message && <p className="text-sm text-slate-500 text-center leading-relaxed mb-5">{opts.message}</p>}
+                    <div className="space-y-2.5 mb-5">
+                        {opts.options.map((opt) => {
+                            const isActive = opt.value === opts.currentValue;
+                            return (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => close(opt.value)}
+                                    className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border-2 transition-all text-left group/opt ${isActive
+                                            ? 'border-[#12A55C] bg-[#12A55C]/5 shadow-md shadow-[#12A55C]/10'
+                                            : 'border-slate-100 bg-slate-50/50 hover:border-slate-200 hover:bg-white hover:shadow-sm'
+                                        }`}
+                                >
+                                    <div
+                                        className={`h-10 w-10 rounded-xl flex items-center justify-center text-lg shrink-0 transition-colors`}
+                                        style={{ backgroundColor: opt.color ? `${opt.color}15` : '#f1f5f9', color: opt.color || '#64748b' }}
+                                    >
+                                        {opt.icon || '●'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-bold ${isActive ? 'text-[#12A55C]' : 'text-slate-700'}`}>{opt.label}</p>
+                                        {opt.description && <p className="text-[11px] text-slate-400 mt-0.5">{opt.description}</p>}
+                                    </div>
+                                    {isActive && (
+                                        <div className="h-6 w-6 rounded-full bg-[#12A55C] flex items-center justify-center shrink-0">
+                                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                        </div>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <button onClick={() => close(null)} className={`w-full ${btnStyles.ghost}`}>
+                        {opts.cancelText || "Cancel"}
+                    </button>
+                </>
+            );
+        }
     };
 
     return (
-        <ModalContext.Provider value={{ showAlert, showConfirm, showPrompt }}>
+        <ModalContext.Provider value={{ showAlert, showConfirm, showPrompt, showSelect }}>
             {children}
             {modal.type && (
                 <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 ${isClosing ? 'animate-fadeOut' : 'animate-fadeIn'}`}>
